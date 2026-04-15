@@ -1,0 +1,44 @@
+# Data — large tile files
+data/
+
+# Model weights
+models/
+
+# Computed outputs
+output/
+
+# Large metadata / tile manifest JSONs
+EROSION_DATASET_*.json
+tiles_locations_json/
+
+# Secrets
+.env
+.env.*
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pth.tmp
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data formats (anywhere in the repo)
+*.parquet
+*.csv
+*.npz
+*.npy
+*.h5
+*.hdf5

@@ -1,0 +1,47 @@
+[
+  {
+    "model_file":   "model_v1_jaswinder_epoch50.pth",
+    "version":      "v1",
+    "epoch":        50,
+    "description":  "Jaswinder baseline — epoch 50",
+    "dataset_name": "v1_jaswinder",
+    "tiles_json_id": "da2dabe0-eb9a-4238-8b8d-d1851df7b968",
+    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/2424a7bc-28e6-4e94-a558-075e8c25264f/model_epoch_50.pth"
+  },
+  {
+    "model_file":   "model_v2_no_erosion_td_epoch50.pth",
+    "version":      "v2",
+    "epoch":        50,
+    "description":  "v1 + no-erosion training data — epoch 50",
+    "dataset_name": "v2_no_erosion_td",
+    "tiles_json_id": "f8d5276b-0616-4f25-a580-801878ac0dc4",
+    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/9f39f3c2-ce50-4c6b-a3ae-c355e29f77c8/model_epoch_50.pth"
+  },
+  {
+    "model_file":   "model_v3_split_test_epoch50.pth",
+    "version":      "v3",
+    "epoch":        50,
+    "description":  "v2 + no-erosion TD + split test — epoch 50",
+    "dataset_name": "v3_split_test_ep50",
+    "tiles_json_id": "17620a1a-8cb2-439e-96ef-b6131e34dda3",
+    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/a1aacb5b-64b6-4069-939f-ca99f3879d89/model_epoch_50.pth"
+  },
+  {
+    "model_file":   "model_v3_split_test_epoch78.pth",
+    "version":      "v3",
+    "epoch":        78,
+    "description":  "v2 + no-erosion TD + split test — epoch 78",
+    "dataset_name": "v3_split_test_final",
+    "tiles_json_id": "ef1410ef-59ab-4821-b044-11f8ef6a040a",
+    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/1360284e-3545-40ae-96f1-031b14629f3d/model_epoch_78.pth"
+  },
+  {
+    "model_file":   "model_v3_split_test_epoch80.pth",
+    "version":      "v3",
+    "epoch":        80,
+    "description":  "v2 + no-erosion TD + split test — epoch 80",
+    "dataset_name": "v3_split_test_final",
+    "tiles_json_id": "ef1410ef-59ab-4821-b044-11f8ef6a040a",
+    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/1360284e-3545-40ae-96f1-031b14629f3d/model_epoch_80.pth"
+  }
+]
