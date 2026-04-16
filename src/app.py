@@ -372,15 +372,24 @@ with tab_overview:
             use_container_width=True)
 
     st.divider()
+
+    # ── Reading guide ────────────────────────────────────────────────────────
+    st.info(
+        "**How to read erosion metrics:**  \n"
+        "- **Low recall erosion** → under-prediction: the model *misses* real erosion (false negatives — predicts no-erosion instead)  \n"
+        "- **Low precision erosion** → over-prediction: the model *hallucinates* erosion where there is none (false positives — predicts erosion instead of no-erosion)  \n"
+        "These two metrics describe opposite failure modes; F1 penalises both at once."
+    )
+
     wc, bc = st.columns(2)
     with wc:
         st.subheader("Worst 10 — F1 erosion")
         st.dataframe(q("""
             SELECT imagery_file,
-                   ROUND(f1_erosion, 4) AS f1_ero,
+                   ROUND(f1_erosion, 4)        AS f1_ero,
                    ROUND(precision_erosion, 4) AS prec,
-                   ROUND(recall_erosion, 4) AS rec,
-                   n_erosion_pixels AS ero_px
+                   ROUND(recall_erosion, 4)    AS rec,
+                   n_erosion_pixels             AS ero_px
             FROM metrics WHERE n_erosion_pixels > 0
             ORDER BY f1_erosion ASC LIMIT 10
         """), width="stretch", hide_index=True)
@@ -388,12 +397,64 @@ with tab_overview:
         st.subheader("Best 10 — F1 erosion")
         st.dataframe(q("""
             SELECT imagery_file,
-                   ROUND(f1_erosion, 4) AS f1_ero,
+                   ROUND(f1_erosion, 4)        AS f1_ero,
                    ROUND(precision_erosion, 4) AS prec,
-                   ROUND(recall_erosion, 4) AS rec,
-                   n_erosion_pixels AS ero_px
+                   ROUND(recall_erosion, 4)    AS rec,
+                   n_erosion_pixels             AS ero_px
             FROM metrics ORDER BY f1_erosion DESC LIMIT 10
         """), width="stretch", hide_index=True)
+
+    st.divider()
+    oc, uc = st.columns(2)
+    with oc:
+        st.subheader("Worst 10 — Precision erosion  (over-prediction)")
+        st.caption(
+            "Low precision erosion = model predicts erosion where there is none. "
+            "High FP — tiles where the model over-detects erosion."
+        )
+        st.dataframe(q("""
+            SELECT imagery_file,
+                   ROUND(precision_erosion, 4) AS prec_ero,
+                   ROUND(recall_erosion, 4)    AS rec_ero,
+                   ROUND(f1_erosion, 4)        AS f1_ero,
+                   n_erosion_pixels             AS ero_px
+            FROM metrics WHERE n_erosion_pixels > 0
+            ORDER BY precision_erosion ASC LIMIT 10
+        """), width="stretch", hide_index=True)
+    with uc:
+        st.subheader("Worst 10 — Recall erosion  (under-prediction)")
+        st.caption(
+            "Low recall erosion = model misses real erosion. "
+            "High FN — tiles where the model under-detects erosion."
+        )
+        st.dataframe(q("""
+            SELECT imagery_file,
+                   ROUND(recall_erosion, 4)    AS rec_ero,
+                   ROUND(precision_erosion, 4) AS prec_ero,
+                   ROUND(f1_erosion, 4)        AS f1_ero,
+                   n_erosion_pixels             AS ero_px
+            FROM metrics WHERE n_erosion_pixels > 0
+            ORDER BY recall_erosion ASC LIMIT 10
+        """), width="stretch", hide_index=True)
+
+    st.divider()
+    st.subheader("Worst 10 — F1 no-erosion  (erosion hallucination)")
+    st.caption(
+        "Low F1 no-erosion is the mirror of low precision erosion: the model labels no-erosion pixels as erosion. "
+        "Filter: tiles with >= 10 000 no-erosion pixels (excludes near-fully-eroded tiles where the metric is noisy)."
+    )
+    st.dataframe(q("""
+        SELECT imagery_file,
+               ROUND(f1_no_erosion, 4)        AS f1_no_ero,
+               ROUND(precision_no_erosion, 4) AS prec_no_ero,
+               ROUND(recall_no_erosion, 4)    AS rec_no_ero,
+               n_no_erosion_pixels             AS no_ero_px,
+               n_erosion_pixels                AS ero_px,
+               ROUND(f1_erosion, 4)            AS f1_ero
+        FROM metrics
+        WHERE n_no_erosion_pixels >= 10000
+        ORDER BY f1_no_erosion ASC LIMIT 10
+    """), width="stretch", hide_index=True)
 
 
 # ── TAB 2: Tile explorer ──────────────────────────────────────────────────────
@@ -402,14 +463,24 @@ with tab_explorer:
 
     # Sort options: simple (col, dir) or compound (raw ORDER BY clause)
     sort_opts = {
-        "★ Worst F1 + most erosion px":    "f1_erosion ASC, n_erosion_pixels DESC",
-        "★ Best F1 + most erosion px":     "f1_erosion DESC, n_erosion_pixels DESC",
-        "F1 erosion ↑ (worst first)":      "f1_erosion ASC",
-        "F1 erosion ↓ (best first)":       "f1_erosion DESC",
-        "Precision ↑ (worst first)":       "precision_erosion ASC",
-        "Recall ↑ (worst first)":          "recall_erosion ASC",
-        "Most erosion pixels":             "n_erosion_pixels DESC",
-        "Least erosion pixels":            "n_erosion_pixels ASC",
+        "★ Worst F1 + most erosion px":                  "f1_erosion ASC, n_erosion_pixels DESC",
+        "★ Best F1 + most erosion px":                   "f1_erosion DESC, n_erosion_pixels DESC",
+        "★ Worst precision erosion (over-prediction)":   "precision_erosion ASC, n_erosion_pixels DESC",
+        "★ Worst recall erosion (under-prediction)":     "recall_erosion ASC, n_erosion_pixels DESC",
+        "★ Worst F1 no-erosion (hallucination)":         "f1_no_erosion ASC, n_no_erosion_pixels DESC",
+        "F1 erosion ↑ (worst first)":                    "f1_erosion ASC",
+        "F1 erosion ↓ (best first)":                     "f1_erosion DESC",
+        "Precision erosion ↑ (worst first)":             "precision_erosion ASC",
+        "Recall erosion ↑ (worst first)":                "recall_erosion ASC",
+        "F1 no-erosion ↑ (worst first)":                 "f1_no_erosion ASC",
+        "F1 no-erosion ↓ (best first)":                  "f1_no_erosion DESC",
+        "Most GT erosion px":                            "n_erosion_pixels DESC",
+        "Least GT erosion px":                           "n_erosion_pixels ASC",
+        "Most predicted erosion px (tp+fp)":             "tp_erosion + fp_erosion DESC",
+        "Least predicted erosion px (tp+fp)":            "tp_erosion + fp_erosion ASC",
+        "Most GT no-erosion px":                         "n_no_erosion_pixels DESC",
+        "Largest tile (total px)":                       "n_erosion_pixels + n_no_erosion_pixels DESC",
+        "Smallest tile (total px)":                      "n_erosion_pixels + n_no_erosion_pixels ASC",
     }
 
     sec_opts = {
@@ -422,7 +493,15 @@ with tab_explorer:
         "Recall ↑":                ", recall_erosion ASC",
     }
 
-    fc1, fc2, fc3, fc4, fc5 = st.columns([2, 2, 2, 2, 1])
+    _max_total_px = int(q(
+        "SELECT MAX(n_erosion_pixels + n_no_erosion_pixels) FROM metrics"
+    ).iloc[0, 0])
+    _max_pred_px = int(q(
+        "SELECT MAX(tp_erosion + fp_erosion) FROM metrics"
+    ).iloc[0, 0])
+
+    # ── Row 1: sort + basic filters ───────────────────────────────────────────
+    fc1, fc2, fc3, fc4, fc5, fc6 = st.columns([2, 2, 2, 2, 2, 1])
     with fc1:
         sort_label = st.selectbox("Sort by (primary)", list(sort_opts.keys()), index=0)
         order_clause = sort_opts[sort_label]
@@ -433,23 +512,58 @@ with tab_explorer:
         f1_range = st.slider("F1 erosion range", 0.0, 1.0, (0.0, 1.0), step=0.01)
     with fc4:
         max_px = int(q("SELECT MAX(n_erosion_pixels) FROM metrics").iloc[0, 0])
-        exp_min_px = st.number_input("Min erosion pixels", 0, max_px, 200, step=100)
+        exp_min_px = st.number_input("Min GT erosion px", 0, max_px, 0, step=100,
+                                     help="Minimum ground-truth erosion pixels in the tile.")
     with fc5:
+        min_total_px = st.number_input(
+            "Min tile size (labeled px)",
+            min_value=0, max_value=_max_total_px, value=50_000, step=10_000,
+            help="Filter border/edge tiles. total = erosion px + no-erosion px.",
+        )
+        st.caption("full tile = 384×384 = 147 456 px")
+    with fc6:
         page_size = st.selectbox("Rows / page", [20, 50, 100], index=0)
+
+    # ── Row 2: predicted erosion filter ──────────────────────────────────────
+    rf1, rf2, _ = st.columns([3, 3, 6])
+    with rf1:
+        min_pred_px = st.number_input(
+            "Min predicted erosion px  (tp + fp)",
+            min_value=0, max_value=_max_pred_px, value=0, step=500,
+            help="Exclude tiles where the model predicts little or no erosion. "
+                 "Set > 0 to focus on real over-prediction cases (avoids the degenerate "
+                 "precision=0 when the model predicts nothing at all).",
+        )
+    with rf2:
+        max_gt_px = st.number_input(
+            "Max GT erosion px",
+            min_value=0, max_value=max_px, value=max_px, step=500,
+            help="Cap ground-truth erosion pixels. Set low (e.g. 500) to isolate tiles "
+                 "where GT has little/no erosion but the model still predicts it.",
+        )
 
     filtered = q(f"""
         SELECT imagery_file, mask_file,
                ROUND(f1_erosion, 4)        AS f1_erosion,
                ROUND(precision_erosion, 4) AS precision,
                ROUND(recall_erosion, 4)    AS recall,
-               ROUND(iou_erosion, 4)       AS iou,
-               n_erosion_pixels,
-               n_no_erosion_pixels
+               n_erosion_pixels            AS gt_ero_px,
+               n_no_erosion_pixels         AS gt_no_ero_px,
+               (tp_erosion + fp_erosion)   AS pred_ero_px,
+               (n_erosion_pixels + n_no_erosion_pixels) AS total_px
         FROM metrics
         WHERE f1_erosion BETWEEN {f1_range[0]} AND {f1_range[1]}
           AND n_erosion_pixels >= {exp_min_px}
+          AND n_erosion_pixels <= {max_gt_px}
+          AND (tp_erosion + fp_erosion) >= {min_pred_px}
+          AND (n_erosion_pixels + n_no_erosion_pixels) >= {min_total_px}
         ORDER BY {order_clause}
     """)
+
+    # ── Search by tile name ───────────────────────────────────────────────────
+    search_str = st.text_input("Search tile name (substring)", value="", placeholder="e.g. 81bdc548")
+    if search_str:
+        filtered = filtered[filtered["imagery_file"].str.contains(search_str, case=False, na=False)]
 
     total = len(filtered)
     total_pages = max(1, (total - 1) // page_size + 1)
@@ -478,13 +592,27 @@ with tab_explorer:
 
         st.subheader("Selected tile")
 
-        nc1, nc2 = st.columns(2)
+        nc1, nc2, nc3 = st.columns([3, 3, 2])
         with nc1:
             st.markdown("**Imagery file**")
             st.code(imagery_file, language=None)
         with nc2:
             st.markdown("**Mask file**")
             st.code(mask_file, language=None)
+        with nc3:
+            # ── Geo lookup ────────────────────────────────────────────────────
+            from src.build_geo import geo_parquet_path as _geo_path_exp
+            _geo_f = _geo_path_exp(_registry_entry(selected_model_name).get("dataset_name", "default"))
+            if _geo_f.exists():
+                _geo_df = pd.read_parquet(_geo_f, columns=["imagery_file", "lat", "lon"])
+                _geo_row = _geo_df[_geo_df["imagery_file"] == imagery_file]
+                if not _geo_row.empty:
+                    _lat = float(_geo_row.iloc[0]["lat"])
+                    _lon = float(_geo_row.iloc[0]["lon"])
+                    st.markdown("**Location (centroid)**")
+                    st.metric("Lat", f"{_lat:.5f}")
+                    st.metric("Lon", f"{_lon:.5f}")
+                    st.caption("→ use these coords in the Map tab")
 
         full = q(f"""
             SELECT * FROM metrics WHERE imagery_file = '{imagery_file}' LIMIT 1
@@ -585,6 +713,20 @@ with tab_map:
             map_df_full = pd.DataFrame()
 
         if not map_df_full.empty:
+            # ── Jump to tile ───────────────────────────────────────────────────
+            jump_str = st.text_input(
+                "Jump to tile (paste name or UUID fragment from Explorer)",
+                value="", placeholder="e.g. 16413f59", key="map_jump",
+            )
+            _jump_row = None
+            if jump_str:
+                _hits = map_df_full[map_df_full["imagery_file"].str.contains(jump_str, case=False, na=False)]
+                if not _hits.empty:
+                    _jump_row = _hits.iloc[0]
+                    st.success(f"Found: **{_jump_row['imagery_file']}** — lat {_jump_row['lat']:.5f}, lon {_jump_row['lon']:.5f}")
+                else:
+                    st.warning("No tile found matching that name.")
+
             # ── Filters ───────────────────────────────────────────────────────
             mc1, mc2, mc3 = st.columns([2, 2, 2])
             with mc1:
@@ -615,6 +757,12 @@ with tab_map:
                 & (map_df_full["f1_erosion"].between(*map_f1_range))
             ].copy()
 
+            # Mark the jumped-to tile so it renders bigger
+            map_df["_highlight"] = (
+                map_df["imagery_file"].str.contains(jump_str, case=False, na=False)
+                if jump_str else False
+            )
+
             st.caption(f"**{len(map_df):,}** tiles shown")
 
             if map_df.empty:
@@ -622,9 +770,18 @@ with tab_map:
             else:
                 cap = map_df["n_erosion_pixels"].quantile(0.95) + 1
                 map_df["_size"] = map_df["n_erosion_pixels"].clip(upper=cap) + 1
+                # Highlighted tile gets 3× bigger dot
+                map_df.loc[map_df["_highlight"], "_size"] = map_df["_size"].max() * 3
 
-                _center_lat = map_df["lat"].mean()
-                _center_lon = map_df["lon"].mean()
+                # Re-centre on the jumped tile if found, otherwise use dataset mean
+                if _jump_row is not None:
+                    _center_lat = float(_jump_row["lat"])
+                    _center_lon = float(_jump_row["lon"])
+                    _zoom = 15
+                else:
+                    _center_lat = map_df["lat"].mean()
+                    _center_lon = map_df["lon"].mean()
+                    _zoom = 11
 
                 fig_map = px.scatter_map(
                     map_df,
@@ -643,12 +800,36 @@ with tab_map:
                     },
                     color_continuous_scale="RdYlGn",
                     center={"lat": _center_lat, "lon": _center_lon},
-                    zoom=11,
+                    zoom=_zoom,
                     height=650,
                     map_style="carto-darkmatter",
                     title=f"Tiles coloured by {color_metric} · {len(map_df):,} tiles",
                 )
                 fig_map.update_layout(margin={"r": 0, "t": 40, "l": 0, "b": 0})
+
+                # ── Highlight jumped tile as a bright overlay trace ────────────
+                if _jump_row is not None:
+                    import plotly.graph_objects as go
+                    fig_map.add_trace(go.Scattermap(
+                        lat=[float(_jump_row["lat"])],
+                        lon=[float(_jump_row["lon"])],
+                        mode="markers",
+                        marker=dict(size=24, color="#00FFFF", opacity=1.0),
+                        name="",
+                        hovertext=str(_jump_row["imagery_file"]),
+                        hoverinfo="text",
+                        showlegend=False,
+                    ))
+                    # Second ring for a "bullseye" effect
+                    fig_map.add_trace(go.Scattermap(
+                        lat=[float(_jump_row["lat"])],
+                        lon=[float(_jump_row["lon"])],
+                        mode="markers",
+                        marker=dict(size=40, color="rgba(0,255,255,0.25)"),
+                        name="",
+                        hoverinfo="skip",
+                        showlegend=False,
+                    ))
 
                 map_event = st.plotly_chart(
                     fig_map, use_container_width=True,

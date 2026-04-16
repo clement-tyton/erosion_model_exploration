@@ -1,7 +1,6 @@
 # Erosion R&D — Evaluation & Exploration Dashboard
 
-Internal tool for evaluating and comparing erosion detection models trained on drone imagery (Western Australia).  
-Built over several sessions by Clément + Claude.
+Internal tool for evaluating and comparing erosion detection models trained on drone imagery (Western Australia).
 
 ---
 
@@ -20,31 +19,37 @@ This repo provides:
 ```
 erosion_R_and_D/
 │
-├── models/                          # Model checkpoints (.pth)
+├── models_registry.json             # Source of truth: model → dataset mapping (see below)
+│
+├── models/                          # Model checkpoints (.pth) — downloaded by run_all
 │   ├── model_v1_jaswinder_epoch50.pth
 │   ├── model_v2_no_erosion_td_epoch50.pth
 │   ├── model_v3_split_test_epoch50.pth
 │   ├── model_v3_split_test_epoch78.pth
-│   └── model_v3_split_test_epoch80.pth
+│   ├── model_v3_split_test_epoch80.pth
+│   └── model_finetuned_tytonai_epoch5.pth
 │
-├── models_registry.json             # Source of truth: model → dataset mapping
-│
-├── data/                            # Downloaded tile NPZ files (one dir per dataset)
-│   ├── v1_jaswinder/
-│   ├── v2_no_erosion_td/
-│   ├── v3_split_test_ep50/
-│   └── v3_split_test_final/         # shared by ep78 + ep80
-│
-├── <dataset_name>.json              # Tile manifest for each dataset (downloaded from S3)
+├── tiles_locations_json/            # Tile manifest JSONs — downloaded by run_all
 │   ├── v1_jaswinder.json
 │   ├── v2_no_erosion_td.json
 │   ├── v3_split_test_ep50.json
-│   └── v3_split_test_final.json
+│   ├── v3_split_test_final.json
+│   └── finetuned_tytonai_ep5.json
 │
-├── output/                          # Generated outputs
+├── data/                            # Downloaded tile NPZ files — one dir per dataset
+│   ├── v1_jaswinder/
+│   ├── v2_no_erosion_td/
+│   ├── v3_split_test_ep50/
+│   ├── v3_split_test_final/         # shared by ep78 and ep80
+│   └── finetuned_tytonai_ep5/
+│
+├── output/                          # Generated outputs (all skipped if already present)
 │   ├── metrics_<model_stem>.parquet # Per-tile metrics (one file per model)
-│   ├── tiles_geo.parquet            # Geographic centroids for all tiles (WGS84)
-│   └── tiles/                       # Generated PNG visualisations (one dir per model)
+│   ├── metrics_<model_stem>.csv     # Same data as parquet
+│   ├── tiles_geo_<dataset>.parquet  # WGS84 centroids (one file per unique dataset)
+│   └── tiles/                       # PNG visualisations (one subdirectory per model)
+│
+├── .env                             # AWS credentials (not committed)
 │
 └── src/
     ├── config.py                    # Paths, model hyperparameters, normalisation stats
@@ -52,7 +57,7 @@ erosion_R_and_D/
     ├── model.py                     # SMP UNet builder + checkpoint loading
     ├── evaluate.py                  # Batch inference → per-tile metrics → Parquet
     ├── visualize.py                 # PNG generation (side-by-side masks + contour overlay)
-    ├── build_geo.py                 # Extract WGS84 centroids from all NPZ tiles
+    ├── build_geo.py                 # Extract WGS84 centroids from NPZ tiles (per dataset)
     ├── download_tiles.py            # Download NPZ files from S3 given a manifest JSON
     ├── run_all.py                   # Full pipeline: download → evaluate for all models
     └── app.py                       # Streamlit dashboard
@@ -62,7 +67,8 @@ erosion_R_and_D/
 
 ## Model registry
 
-`models_registry.json` is the single source of truth linking each model to its training dataset.
+`models_registry.json` is the single source of truth linking each model to its training dataset.  
+`run_all.py` reads this file and drives every step of the pipeline.
 
 ```json
 {
@@ -70,26 +76,52 @@ erosion_R_and_D/
   "version":       "v3",
   "epoch":         80,
   "description":   "v2 + no-erosion TD + split test — epoch 80",
-  "dataset_name":  "v3_split_test_final",       ← human-readable dataset key
-  "tiles_json_id": "ef1410ef-...",               ← S3 UUID of the manifest
-  "s3_model":      "s3://..."
+  "dataset_name":  "v3_split_test_final",
+  "tiles_json_id": "ef1410ef-59ab-4821-b044-11f8ef6a040a",
+  "s3_model":      "s3://bucket/path/model_epoch_80.pth"
 }
 ```
 
-- `dataset_name` drives both the local manifest filename (`v3_split_test_final.json`) and the tile directory (`data/v3_split_test_final/`)
-- Models sharing the same `dataset_name` reuse the same downloaded tiles (no duplicate download)
+### How each field is used
+
+| Field | Used by | Purpose |
+|---|---|---|
+| `model_file` | run_all, app | Local filename under `models/`; also drives the output parquet name (`metrics_<stem>.parquet`) |
+| `version`, `epoch`, `description` | app | Display labels in the dashboard Compare tab |
+| `dataset_name` | run_all, app, build_geo | Local tile directory (`data/<dataset_name>/`) and manifest path (`tiles_locations_json/<dataset_name>.json`). Models sharing the same value **reuse the same downloaded tiles and geo index** — no redundant downloads |
+| `tiles_json_id` | run_all | S3 UUID used to download the tile manifest: `<bucket>/<tiles_json_id>.json` → `tiles_locations_json/<dataset_name>.json` |
+| `s3_model` | run_all | Full S3 URI for the model checkpoint — downloaded once to `models/<model_file>` |
+
+### All registered models
+
+| model_file | version | epoch | dataset_name | Description |
+|---|---|---|---|---|
+| model_v1_jaswinder_epoch50.pth | v1 | 50 | v1_jaswinder | Original Jaswinder baseline |
+| model_v2_no_erosion_td_epoch50.pth | v2 | 50 | v2_no_erosion_td | v1 + added no-erosion training data |
+| model_v3_split_test_epoch50.pth | v3 | 50 | v3_split_test_ep50 | v2 + train/test split, early checkpoint |
+| model_v3_split_test_epoch78.pth | v3 | 78 | v3_split_test_final | v2 + split test — epoch 78 |
+| model_v3_split_test_epoch80.pth | v3 | 80 | v3_split_test_final | v2 + split test — best checkpoint |
+| model_finetuned_tytonai_epoch5.pth | v4_finetuned | 5 | finetuned_tytonai_ep5 | v3 finetuned on TytonAI data — epoch 5 |
+
+> `v3_split_test_final` is shared by ep78 and ep80: tiles and geo index are downloaded once, metrics parquets are separate.
 
 ---
 
-## Model versions
+## Skip / cache logic
 
-| Model | Dataset | Description |
-|---|---|---|
-| v1 Jaswinder ep50 | v1_jaswinder | Original baseline (Jaswinder) |
-| v2 ep50 | v2_no_erosion_td | v1 + added no-erosion training data |
-| v3 ep50 | v3_split_test_ep50 | v2 + train/test split, early checkpoint |
-| v3 ep78 | v3_split_test_final | Same as ep80, earlier checkpoint |
-| v3 ep80 | v3_split_test_final | Best checkpoint from final training run |
+Every step is idempotent — re-running `run_all` never re-downloads or re-computes anything unless it is genuinely missing or `--force` is passed.
+
+| Step | Skipped when |
+|---|---|
+| Model download | `models/<model_file>` exists |
+| Manifest download | `tiles_locations_json/<dataset_name>.json` exists |
+| Tile download (dataset level) | `data/<dataset_name>/` is non-empty |
+| Individual tile download | `data/<dataset_name>/<file>.npz` already exists (checked in `download_tiles.py`) |
+| Geo index build | `output/tiles_geo_<dataset_name>.parquet` exists (unless `--force`) |
+| Evaluation | `output/metrics_<model_stem>.parquet` exists (unless `--force`) |
+| PNG generation | `output/tiles/<model>/<tile>.png` exists (checked in `visualize.py` and `app.py`) |
+
+`--force` re-runs evaluation and geo build only; **tiles are never re-downloaded by force**.
 
 ---
 
@@ -111,26 +143,21 @@ cp .env.example .env   # fill in AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
 ```bash
 python -m src.run_all
 ```
-This will for each model, in order:
-1. Download the tile manifest JSON from S3
-2. Download all NPZ tiles into `data/<dataset_name>/` (32 parallel workers)
-3. Run inference and save `output/metrics_<model>.parquet`
 
-Already-computed parquets are skipped. Use `--force` to re-evaluate.
+For each model in the registry, in order:
+1. Download model checkpoint from S3 (if not present)
+2. Download tile manifest JSON from S3 (if not present)
+3. Download all NPZ tiles into `data/<dataset_name>/` — 32 parallel workers, per-file skip (if not present)
+4. Build geographic index → `output/tiles_geo_<dataset_name>.parquet` (if not present)
+5. Run inference → `output/metrics_<model_stem>.parquet` (if not present)
 
 ```bash
-python -m src.run_all --dry-run    # preview what would run
-python -m src.run_all --force      # force re-evaluation (tiles not re-downloaded)
+python -m src.run_all --dry-run    # preview what would run without doing anything
+python -m src.run_all --force      # force re-evaluation (tiles are NOT re-downloaded)
+python -m src.run_all --workers 64 # change tile download parallelism (default: 32)
 ```
 
-### 4. Build geographic index (once)
-```bash
-python -m src.build_geo
-```
-Extracts WGS84 centroids from all NPZ tiles → `output/tiles_geo.parquet`.  
-Required for the Map tab.
-
-### 5. Launch the dashboard
+### 4. Launch the dashboard
 ```bash
 streamlit run src/app.py
 ```
@@ -141,10 +168,10 @@ streamlit run src/app.py
 
 ### Overview
 Global KPIs for the selected model:
-- **Mean F1 erosion** — macro: average of per-tile F1 on erosion tiles
+- **Mean F1 erosion** — macro: average of per-tile F1 scores on erosion tiles
 - **Global F1 erosion** — micro: 2·ΣTP / (2·ΣTP + ΣFP + ΣFN) across all pixels
-- Precision / Recall / F1 no-erosion
-- A slider filters the KPIs and charts to tiles with ≥ N erosion pixels (useful to exclude very sparse tiles where detection is inherently hard)
+- Precision / Recall / F1 for no-erosion
+- A slider filters the KPIs and charts to tiles with ≥ N erosion pixels (useful to exclude very sparse tiles)
 - Precision vs Recall scatter (one dot per tile, size = erosion pixel count)
 - F1 / Precision / Recall / IOU histograms
 
@@ -164,9 +191,10 @@ Global KPIs for the selected model:
 
 ### Compare models
 - Loads all available `output/metrics_*.parquet` files
-- Summary table: F1, global F1, precision, recall, IOU, dataset, tile count, erosion prevalence
+- Summary leaderboard: F1, global F1, precision, recall, IOU, dataset, tile count, erosion prevalence
 - Bar chart comparing any metric across models
-- Scatter: erosion prevalence in dataset vs model F1 (helps understand data impact on performance)
+- Scatter: erosion prevalence in dataset vs model F1 (shows data impact on performance)
+- Pairwise deep-dive and performance by erosion density
 
 ### Raw data
 - Full parquet viewer (first 5 000 rows)
@@ -177,10 +205,10 @@ Global KPIs for the selected model:
 ## Key design decisions
 
 **Why Parquet + DuckDB?**  
-19 752 tiles per model × 5 models. Parquet gives fast columnar reads; DuckDB queries it in-process with SQL — no server, no loading the whole file into RAM.
+19 752 tiles per model × 6 models. Parquet gives fast columnar reads; DuckDB queries it in-process with SQL — no server, no loading the whole file into RAM.
 
 **Why inference on CPU in the app?**  
-CUDA causes segfaults in Streamlit's forked worker process. CPU is slower but stable for on-the-fly single-tile inference. Batch evaluation (`run_all`) uses CUDA.
+CUDA causes segfaults in Streamlit's forked worker process. CPU is slower but stable for on-the-fly single-tile inference. Batch evaluation (`run_all`) uses CUDA when available.
 
 **Why Pad32?**  
 The SMP encoder requires spatial dimensions to be multiples of 32. Some tiles are smaller (e.g. 285×122). The app pads before inference and crops the prediction back to the original size.
@@ -197,7 +225,7 @@ v3 models have a train/test split but we currently evaluate on all balanced tile
 
 ## Tile format (NPZ)
 
-Each tile is a `.npz` archive with keys:
+Each imagery tile is a `.npz` archive with keys:
 - `RED`, `GREEN`, `BLUE`, `DSM`, `DSM_NORMALIZED`, `MEP` — band arrays (H × W float32)
 - `SRID` — EPSG code (20350 = GDA94 / MGA zone 50, Western Australia)
 - `GEO_TRANSFORM` — 9-element row-major 3×3 affine matrix:  
@@ -208,6 +236,8 @@ Mask tiles use the same format with a single band containing pixel labels:
 - `0` → background (ignored in metrics)
 - `1` → no-erosion
 - `14` → erosion
+
+The model uses 4 bands: `RED`, `GREEN`, `BLUE`, `DSM_NORMALIZED`. Tiles missing any of these are filtered out before inference.
 
 ---
 
@@ -222,4 +252,4 @@ The model was trained with per-band mean/std normalisation (values in 0–255 sc
 | BLUE | 92.58 | 30.09 |
 | DSM_NORMALIZED | −9.73 | 4.68 |
 
-Applied in `src/dataset.py` before feeding to the model.
+Applied in `src/dataset.py` before feeding to the model: `normalized = (raw - mean) / std`.
