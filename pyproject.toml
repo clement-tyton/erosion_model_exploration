@@ -5,7 +5,7 @@ requires-python = ">=3.10"
 dependencies = [
     "torch>=2.0",
     "torchvision",
-    "segmentation-models-pytorch==0.3.3",
+    "segmentation-models-pytorch==0.4.0",
     "timm",
     "huggingface-hub",
     "numpy",
@@ -20,6 +20,8 @@ dependencies = [
     "pyproj",
     "python-dotenv",
     "tqdm",
+    "albumentations>=2.0.8",
+    "mlflow>=3.11.1",
 ]
 
 [build-system]

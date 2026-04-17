@@ -43,5 +43,51 @@
     "dataset_name": "v3_split_test_final",
     "tiles_json_id": "ef1410ef-59ab-4821-b044-11f8ef6a040a",
     "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/1360284e-3545-40ae-96f1-031b14629f3d/model_epoch_80.pth"
+  },
+  {
+    "model_file":   "model_finetuned_tytonai_epoch5.pth",
+    "version":      "v4_finetuned",
+    "epoch":        5,
+    "description":  "v3 finetuned on TytonAI data — epoch 5",
+    "dataset_name": "finetuned_tytonai_ep5",
+    "tiles_json_id": "a50928f6-0f5d-413f-889d-3ffe2339c05d",
+    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/40ac9c6b-366f-4948-8850-bf345ffcb60c/model_epoch_5.pth"
+  },
+  {
+    "model_file":   "model_v3_split_test_epoch400.pth",
+    "version":      "v3",
+    "epoch":        400,
+    "description":  "v3 from scratch — epoch 400",
+    "dataset_name": "v3_split_test_final",
+    "tiles_json_id": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
+    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_400.pth"
+  },
+  {
+    "model_file":   "model_v3_split_test_epoch399.pth",
+    "version":      "v3",
+    "epoch":        399,
+    "description":  "v3 from scratch — epoch 399",
+    "dataset_name": "v3_split_test_final",
+    "tiles_json_id": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
+    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_399.pth"
+  },
+  {
+    "model_file":   "model_v3_split_test_epoch_95.pth",
+    "version":      "v3",
+    "epoch":        95,
+    "description":  "v3 from scratch — epoch 95",
+    "dataset_name": "v3_split_test_final",
+    "tiles_json_id": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
+    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_95.pth"
+  },
+  {
+    "model_file":   "model_v3_split_test_epoch_243.pth",
+    "version":      "v3",
+    "epoch":        243,
+    "description":  "v3 from scratch — epoch 243",
+    "dataset_name": "v3_split_test_final",
+    "tiles_json_id": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
+    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_243.pth"
   }
 ]
+
