@@ -1,8 +1,9 @@
-# Data — large tile files
-data/
+# Data — large tile files (actual data dirs, not source code)
+**/train_data/
+**/test_data/
 
-# Model weights
-models/
+# Model weights (saved checkpoints, not source code)
+Experiments_MLFLOW/checkpoints/
 
 # Computed outputs
 output/
