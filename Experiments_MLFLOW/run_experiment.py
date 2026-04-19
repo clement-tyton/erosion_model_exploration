@@ -21,7 +21,7 @@ from pathlib import Path
 from torch.utils.data import DataLoader
 
 # ── Make Experiments_MLFLOW importable when running as a script ───────────────
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import Experiments_MLFLOW.config as cfg
 from Experiments_MLFLOW.data.dataset import TrainDataset, TestDataset, collate_pad
