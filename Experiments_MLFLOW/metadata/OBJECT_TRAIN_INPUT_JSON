@@ -1,0 +1,70 @@
+{
+  "balanced_tiles_path": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
+  "batch_size": "xxx",
+  "class_list": [
+    1,
+    14
+  ],
+  "class_weights": [
+    1,
+    1.76349211690742
+  ],
+  "cnn_model_name": "Element_Geospatial_Erosion_MMv3_split_test_400_ep",
+  "config": {
+    "activation": "softmax2d",
+    "bands": [
+      "RED",
+      "GREEN",
+      "BLUE",
+      "DSM_NORMALIZED"
+    ],
+    "encoder_depth": 5,
+    "encoder_type": "timm-res2net101_26w_4s",
+    "encoder_weights": "imagenet",
+    "model_type": "Unet",
+    "preprocess_before_augmentation": true
+  },
+  "final_class_counts": {
+    "0": 535062533,
+    "1": 2744660814,
+    "14": 386025906
+  },
+  "focal_loss": false,
+  "freeze_encoder": false,
+  "initial_class_counts": {
+    "0": 535061085,
+    "1": 1679440266,
+    "14": 98468414
+  },
+  "initial_lr": 0.001,
+  "lr_schedular_dec_rate": 0.5,
+  "lr_schedular_step_size": 133,
+  "num_epochs": 400,
+  "optional_band_drop_rate": 0.3,
+  "project_id": "b8d23b58-f75d-11f0-8774-673f9b4d657e",
+  "samples_per_train_epoch": 28539,
+  "save_model": true,
+  "seed": 112,
+  "target_class_counts": {
+    "1": 680731729,
+    "14": 386013480
+  },
+  "train_mean": [
+    150.73301134918557,
+    123.75755228360018,
+    92.57823716578613,
+    -9.734063808604613
+  ],
+  "train_std": [
+    39.721974708734216,
+    34.06117915518031,
+    30.092062243775406,
+    4.684211737168346
+  ],
+  "training_dataset_ids": [
+    "3b170ef3-3949-11f1-807b-b7800c157f40"
+  ],
+  "update_segmentation_head": true,
+  "use_valid_dataset": false,
+  "workers": 24
+}

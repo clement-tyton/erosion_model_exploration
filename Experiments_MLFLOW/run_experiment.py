@@ -18,7 +18,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import torch
 from torch.utils.data import DataLoader
 
 # ── Make Experiments_MLFLOW importable when running as a script ───────────────
@@ -33,36 +32,35 @@ from Experiments_MLFLOW.training.trainer import Trainer
 def parse_args():
     p = argparse.ArgumentParser(description="Train UNet or SegFormer on erosion dataset.")
     p.add_argument("--arch",    choices=["unet", "segformer"], required=True)
-    p.add_argument("--variant", default="b2",
-                   help="SegFormer MiT variant: b0/b1/b2/b3/b4/b5 (default: b2)")
+    p.add_argument("--encoder", default=cfg.ENCODER_NAME,
+                   help=f"Encoder backbone for both archs (default: {cfg.ENCODER_NAME}). "
+                        "Use 'mit_b2' / 'mit_b4' for native SegFormer MiT encoders.")
     p.add_argument("--epochs",  type=int, default=cfg.NUM_EPOCHS)
     p.add_argument("--batch-size",         type=int, default=cfg.BATCH_SIZE)
     p.add_argument("--accumulation-steps", type=int, default=cfg.ACCUMULATION_STEPS)
     p.add_argument("--workers",            type=int, default=cfg.NUM_WORKERS)
     p.add_argument("--device", default=None,
-                   help="Force device: 'cuda' or 'cpu' (default: auto-detect)")
+                   help="Force device: 'cuda:0', 'cuda:1', 'cpu' (default: least-busy GPU)")
     p.add_argument("--checkpoint-every", type=int, default=10)
+    p.add_argument("--eval-every",       type=int, default=10,
+                   help="Run test evaluation every N epochs (default: 10)")
     p.add_argument("--run-name", default=None,
-                   help="MLflow run name (default: arch_variant_timestamp)")
+                   help="MLflow run name (default: arch_encoder_timestamp)")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
 
-    # device = "cuda" if torch.cuda.is_available() else "cpu"
-    # run_name = "unet_baseline"
     # ── Device ────────────────────────────────────────────────────────────────
-    device = args.device or (
-        os.environ.get("OBJECT_TRAIN_DEVICE") or
-        ("cuda" if torch.cuda.is_available() else "cpu")
-    )
+    device = args.device or os.environ.get("OBJECT_TRAIN_DEVICE") or cfg.select_free_gpu()
     print(f"Device: {device}")
 
     # ── Run name ──────────────────────────────────────────────────────────────
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    suffix = f"_{args.variant}" if args.arch == "segformer" else ""
-    run_name = args.run_name or f"{args.arch}{suffix}_{timestamp}"
+    # Short encoder label: "timm-res2net101_26w_4s" → "res2net101"
+    enc_short = args.encoder.replace("timm-", "").split("_")[0]
+    run_name = args.run_name or f"{args.arch}_{enc_short}_{timestamp}"
     print(f"Run name: {run_name}")
 
     # ── Datasets ──────────────────────────────────────────────────────────────
@@ -112,16 +110,13 @@ def main():
     )
 
     # ── Model ─────────────────────────────────────────────────────────────────
-    print(f"Building model: {args.arch}" +
-          (f" (variant={args.variant})" if args.arch == "segformer" else ""))
-    model_kwargs = {}
-    if args.arch == "segformer":
-        model_kwargs["variant"] = args.variant
+    print(f"Building model: {args.arch}  encoder: {args.encoder}")
     model = build_model(
         args.arch,
         in_channels=cfg.IN_CHANNELS,
         num_classes=cfg.NUM_CLASSES,
-        **model_kwargs,
+        encoder_name=args.encoder,
+        encoder_depth=cfg.ENCODER_DEPTH,
     )
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -139,9 +134,11 @@ def main():
         config=cfg,
         run_name=run_name,
         arch=args.arch,
+        encoder_name=args.encoder,
         device=device,
         accumulation_steps=args.accumulation_steps,
         checkpoint_every=args.checkpoint_every,
+        eval_every=args.eval_every,
     )
     trainer.train(num_epochs=args.epochs)
 

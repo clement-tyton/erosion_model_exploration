@@ -1498,6 +1498,12 @@ with tab_compare:
 
             # ── Section 1: Leaderboard ─────────────────────────────────────────
             st.markdown("#### 1 · Leaderboard")
+            st.caption(
+                "⚠️ **Mean F1 macro ≠ F1(mean Precision, mean Recall)** — each metric is averaged "
+                "independently per tile, so 2·P·R/(P+R) does not reconstruct Mean F1. "
+                "Likewise, a high **Global F1 micro** (pixel-level) does not imply strong macro averages: "
+                "it is dominated by large dense-erosion regions and can mask poor performance on sparse tiles."
+            )
 
             _train_col_map = {
                 "Mean F1 erosion (macro)":   "mean_f1_erosion",
@@ -1608,12 +1614,28 @@ with tab_compare:
                     for i, v in enumerate(s)
                 ]
 
+            _col_labels = {
+                "global_f1_erosion": "Global F1 (micro·px)",
+                "mean_f1_erosion":   "Mean F1 (macro·ero tiles)",
+                "mean_precision":    "Precision (macro·ero tiles)",
+                "mean_recall":       "Recall (macro·ero tiles)",
+                "mean_iou_erosion":  "IoU (macro·all tiles)",
+                "test_global_f1":    "Test Global F1 (micro·px)",
+                "test_mean_f1":      "Test Mean F1 (macro·ero tiles)",
+                "test_precision":    "Test Precision (macro·ero tiles)",
+                "test_recall":       "Test Recall (macro·ero tiles)",
+                "test_iou":          "Test IoU (macro·all tiles)",
+            }
+            _lb_df_display = _lb_df.rename(columns=_col_labels)
+            _train_num_display = [_col_labels.get(c, c) for c in _train_num_cols]
+            _test_num_display  = [_col_labels.get(c, c) for c in _test_num_cols]
+
             styled_lb = (
-                _lb_df.style
-                .apply(_hi_max,        subset=_train_num_cols)
-                .apply(_hi_purple_max, subset=_test_num_cols)
+                _lb_df_display.style
+                .apply(_hi_max,        subset=_train_num_display)
+                .apply(_hi_purple_max, subset=_test_num_display)
                 .format(
-                    {c: "{:.4f}" for c in _train_num_cols + _test_num_cols}
+                    {c: "{:.4f}" for c in _train_num_display + _test_num_display}
                     | {"erosion_prevalence": "{:.2f}%"},
                     na_rep="—",
                 )
@@ -1852,109 +1874,55 @@ with tab_compare:
 
             st.divider()
 
-            # ── Section 4: Performance by erosion density ─────────────────────
-            st.markdown("#### 4 · Performance by erosion density")
-            _dens_view_opts = ["Train", "Both"] if _has_test_dist else ["Train"]
-            if _has_test_dist:
-                _dens_view_opts = ["Train", "Test", "Both"]
-            _dens_view = st.radio(
-                "Dataset", _dens_view_opts,
-                index=1 if _has_test_dist else 0,
-                horizontal=True, key="dens_view",
-            )
-            _dens_frames = []
-            _show_train_dens = _dens_view in ("Train", "Both")
-            _show_test_dens  = _dens_view in ("Test",  "Both") and _has_test_dist
-
-            def _add_density_frames(src_data: dict, set_label: str) -> None:
-                for _mf, _df_m in src_data.items():
-                    _dc = _df_m.copy()
-                    _total = (_dc["n_erosion_pixels"] + _dc["n_no_erosion_pixels"]).clip(lower=1)
-                    _pct   = _dc["n_erosion_pixels"] / _total * 100
-                    _dc["density"] = pd.cut(
-                        _pct, bins=[-0.001, 0, 5, 25, 100],
-                        labels=["None (0%)", "Sparse (0–5%)", "Medium (5–25%)", "Dense (>25%)"],
-                    )
-                    _dc["model"] = Path(_mf).stem + (f" [{set_label}]" if _dens_view == "Both" else "")
-                    _dens_frames.append(_dc[["model", "density", "f1_erosion"]])
-
-            if _show_train_dens:
-                _add_density_frames(tile_data, "Train")
-            if _show_test_dens:
-                _add_density_frames(test_tile_data, "Test")
-
-            if _dens_frames:
-                _dens_all = pd.concat(_dens_frames, ignore_index=True)
-                _dens_agg = (
-                    _dens_all.groupby(["model", "density"], observed=True)["f1_erosion"]
-                    .agg(mean_f1="mean", n="count").reset_index()
+            # ── Section 4: Erosion density distribution + gap decomposition ──────
+            st.markdown("#### 4 · Erosion density")
+            _ref_src = test_tile_data if _has_test_dist else tile_data
+            _ref_set_lbl = "test" if _has_test_dist else "train"
+            _ref_mf = next(iter(_ref_src), None)
+            if _ref_mf is not None:
+                _ref = _ref_src[_ref_mf].copy()
+                _ref_tot = (_ref["n_erosion_pixels"] + _ref["n_no_erosion_pixels"]).clip(lower=1)
+                _ref_pct = _ref["n_erosion_pixels"] / _ref_tot * 100
+                _ref["density"] = pd.cut(
+                    _ref_pct, bins=[-0.001, 0, 5, 25, 100],
+                    labels=["None (0%)", "Sparse (0–5%)", "Medium (5–25%)", "Dense (>25%)"],
                 )
-                _dens_title = (
-                    "Mean F1 erosion by erosion density bucket  "
-                    f"({'Train' if _dens_view == 'Train' else 'Test' if _dens_view == 'Test' else 'Train + Test'})"
+                _ref["erosion_pct"] = _ref_pct
+
+                _count_tbl = (
+                    _ref.groupby("density", observed=True)
+                    .size().reset_index(name="# tiles")
                 )
-                _fig_dens = px.bar(
-                    _dens_agg, x="density", y="mean_f1", color="model",
-                    barmode="group", text_auto=".3f",
-                    title=_dens_title,
-                    labels={"density": "Erosion density", "mean_f1": "Mean F1 erosion"},
-                    category_orders={"density": ["None (0%)", "Sparse (0–5%)",
-                                                  "Medium (5–25%)", "Dense (>25%)"]},
-                    hover_data={"n": True},
-                    color_discrete_map=_grey_cmap,
+                _total_ref = _count_tbl["# tiles"].sum()
+                _count_tbl["% of set"] = (
+                    (_count_tbl["# tiles"] / _total_ref * 100).round(1).astype(str) + " %"
                 )
-                _fig_dens.update_layout(height=440)
-                st.plotly_chart(_fig_dens, width='stretch')
+                _count_tbl = _count_tbl.rename(columns={"density": "Density bucket"})
 
-                # ── Context: tile distribution (model-independent — ground-truth masks) ──
-                # Use train set when visible, else test set
-                _ref_src = tile_data if (_show_train_dens and tile_data) else test_tile_data
-                _ref_set_lbl = "train" if (_show_train_dens and tile_data) else "test"
-                _ref_mf = next(iter(_ref_src), None)
-                if _ref_mf is not None:
-                    _ref = _ref_src[_ref_mf].copy()
-                    _ref_tot = (_ref["n_erosion_pixels"] + _ref["n_no_erosion_pixels"]).clip(lower=1)
-                    _ref_pct = _ref["n_erosion_pixels"] / _ref_tot * 100
-                    _ref["density"] = pd.cut(
-                        _ref_pct, bins=[-0.001, 0, 5, 25, 100],
-                        labels=["None (0%)", "Sparse (0–5%)", "Medium (5–25%)", "Dense (>25%)"],
+                _ctx_l, _ctx_r = st.columns([1, 2])
+                with _ctx_l:
+                    st.caption(
+                        f"Tile count per bucket ({_ref_set_lbl} set · ground truth · model-independent). "
+                        "A bucket with far more tiles dominates any weighted mean."
                     )
-                    _ref["erosion_pct"] = _ref_pct
-
-                    _count_tbl = (
-                        _ref.groupby("density", observed=True)
-                        .size().reset_index(name="# tiles")
+                    st.dataframe(_count_tbl, hide_index=True, width='stretch')
+                with _ctx_r:
+                    _ero_only = _ref[_ref["erosion_pct"] > 0]
+                    _fig_sparsity = px.histogram(
+                        _ero_only, x="erosion_pct", nbins=60,
+                        title=f"Erosion coverage distribution — {_ref_set_lbl} tiles with erosion ({len(_ero_only):,})",
+                        labels={"erosion_pct": "Erosion pixels (% of tile)"},
                     )
-                    _total_ref = _count_tbl["# tiles"].sum()
-                    _count_tbl["% of set"] = (
-                        (_count_tbl["# tiles"] / _total_ref * 100).round(1).astype(str) + " %"
+                    _fig_sparsity.update_layout(
+                        height=300,
+                        xaxis_title="Erosion % of tile",
+                        yaxis_title="# tiles",
+                        margin=dict(t=40),
                     )
-                    _count_tbl = _count_tbl.rename(columns={"density": "Density bucket"})
+                    st.plotly_chart(_fig_sparsity, width='stretch')
 
-                    _ctx_l, _ctx_r = st.columns([1, 2])
-                    with _ctx_l:
-                        st.caption(
-                            f"Tile count per bucket ({_ref_set_lbl} set · ground truth · model-independent). "
-                            "A bucket with far more tiles dominates any weighted mean."
-                        )
-                        st.dataframe(_count_tbl, hide_index=True, width='stretch')
-                    with _ctx_r:
-                        _ero_only = _ref[_ref["erosion_pct"] > 0]
-                        _fig_sparsity = px.histogram(
-                            _ero_only, x="erosion_pct", nbins=60,
-                            title=f"Erosion coverage distribution — {_ref_set_lbl} tiles with erosion ({len(_ero_only):,})",
-                            labels={"erosion_pct": "Erosion pixels (% of tile)"},
-                        )
-                        _fig_sparsity.update_layout(
-                            height=300,
-                            xaxis_title="Erosion % of tile",
-                            yaxis_title="# tiles",
-                            margin=dict(t=40),
-                        )
-                        st.plotly_chart(_fig_sparsity, width='stretch')
-
-                # ── Mean F1 gap decomposition (test set, pairwise) ──────────
-                if len(test_tile_data) >= 2:
+            # ── Mean F1 gap decomposition (test set, pairwise) ──────────
+            if len(test_tile_data) >= 2:
                     st.markdown("##### Mean F1 gap decomposition (test set)")
                     _gap_models = list(test_tile_data.keys())
                     _gap_labels = [Path(m).stem for m in _gap_models]
@@ -2033,6 +2001,60 @@ with tab_compare:
                                 f"N = {_G_N:,} shared erosion tiles · "
                                 f"positive = A better · negative = B better"
                             )
+
+                            # ── Corroboration charts ──────────────────────────
+                            _bkt_order = ["Sparse (0–5%)", "Medium (5–25%)", "Dense (>25%)"]
+                            _bkt_agg = (
+                                _gm.groupby("bucket", observed=True)
+                                .agg(
+                                    mean_a=("f1_erosion_a", "mean"),
+                                    mean_b=("f1_erosion_b", "mean"),
+                                    n=("f1_erosion_a", "count"),
+                                )
+                                .reindex(_bkt_order)
+                                .reset_index()
+                            )
+                            _bkt_agg["contrib"] = (
+                                (_bkt_agg["mean_a"] - _bkt_agg["mean_b"])
+                                * _bkt_agg["n"] / _G_N
+                            )
+
+                            _corr_l, _corr_r = st.columns(2)
+
+                            # Left: mean F1 per bucket side-by-side
+                            _bkt_long = pd.concat([
+                                _bkt_agg[["bucket", "mean_a"]].rename(columns={"mean_a": "mean_f1"}).assign(model=_gap_a_idx),
+                                _bkt_agg[["bucket", "mean_b"]].rename(columns={"mean_b": "mean_f1"}).assign(model=_gap_b_idx),
+                            ])
+                            _fig_corr_means = px.bar(
+                                _bkt_long, x="bucket", y="mean_f1", color="model",
+                                barmode="group", text_auto=".3f",
+                                title="Mean F1 per bucket (decomposition tiles)",
+                                labels={"bucket": "Bucket", "mean_f1": "Mean F1 erosion"},
+                                category_orders={"bucket": _bkt_order},
+                                color_discrete_sequence=["#3498db", "#e67e22"],
+                            )
+                            _fig_corr_means.update_layout(height=320, margin=dict(t=40))
+                            _corr_l.plotly_chart(_fig_corr_means, width='stretch')
+
+                            # Right: contribution bars (should match table values)
+                            _bkt_agg["color"] = _bkt_agg["contrib"].apply(
+                                lambda v: "#2ecc71" if v > 0.0005 else ("#e74c3c" if v < -0.0005 else "#888888")
+                            )
+                            _fig_corr_contrib = px.bar(
+                                _bkt_agg, x="bucket", y="contrib",
+                                text=_bkt_agg["contrib"].apply(lambda v: f"{v:+.4f}"),
+                                title="Contributions — Σ(f1_A−f1_B)/N per bucket",
+                                labels={"bucket": "Bucket", "contrib": "Contribution"},
+                                category_orders={"bucket": _bkt_order},
+                                color="color",
+                                color_discrete_map="identity",
+                            )
+                            _fig_corr_contrib.update_layout(
+                                height=320, margin=dict(t=40), showlegend=False,
+                            )
+                            _fig_corr_contrib.add_hline(y=0, line_width=1, line_color="gray")
+                            _corr_r.plotly_chart(_fig_corr_contrib, width='stretch')
 
 
 # ── TAB 5: Test set ───────────────────────────────────────────────────────────

@@ -13,12 +13,14 @@ Metrics:
     Training  : ConfusionMeter  → global IOU/F1/precision/recall per epoch
     Test/Val  : TileMetricsCollector → per-tile parquet + global metrics
 
-MLflow experiment: "Erosion project"
-Parquet output  : Experiments_MLFLOW/results/{run_name}/epoch_{N}_test_metrics.parquet
+MLflow tracking: remote server from config.MLFLOW_TRACKING_URI
+Parquet output : Experiments_MLFLOW/results/{run_name}/epoch_{N}_test_metrics.parquet
 """
 
 from __future__ import annotations
 
+import subprocess
+import time
 from pathlib import Path
 
 import mlflow
@@ -31,7 +33,32 @@ from tqdm import tqdm
 
 from .metrics import ConfusionMeter, TileMetricsCollector
 
-EXPERIMENT_NAME = "Erosion project"
+
+def _git_tags() -> dict:
+    def _run(cmd):
+        try:
+            return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
+        except Exception:
+            return ""
+    commit = _run(["git", "rev-parse", "HEAD"])
+    if not commit:
+        return {}
+    return {
+        "git.commit_short": _run(["git", "rev-parse", "--short", "HEAD"]),
+        "git.branch":       _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]),
+        "git.dirty":        str(bool(_run(["git", "status", "--porcelain"]))),
+    }
+
+
+def _model_stats(model: nn.Module) -> dict:
+    total     = sum(p.numel() for p in model.parameters())
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    size_mb   = sum(p.numel() * p.element_size() for p in model.parameters()) / 1024 ** 2
+    return {
+        "model/total_params":     round(total / 100_000) * 100_000,
+        "model/trainable_params": round(trainable / 100_000) * 100_000,
+        "model/size_mb":          round(size_mb, 1),
+    }
 
 
 class Trainer:
@@ -44,10 +71,11 @@ class Trainer:
     config           : Experiments_MLFLOW.config module
     run_name         : str  — MLflow run name
     arch             : str  — "unet" or "segformer"
-    device           : str  — "cuda" or "cpu"
-    accumulation_steps : int  (default 4 → effective batch = physical × 4)
+    encoder_name     : str  — encoder backbone (logged to MLflow)
+    device           : str  — "cuda:0", "cuda:1", "cpu", …
+    accumulation_steps : int  (default 8 → effective batch = physical × 8)
     checkpoint_every   : int  (default 10 epochs)
-    eval_every         : int  (default 10 epochs — save test parquet)
+    eval_every         : int  (default 10 epochs — run test pass + save parquet)
     """
 
     def __init__(
@@ -58,6 +86,7 @@ class Trainer:
         config,
         run_name: str,
         arch: str,
+        encoder_name: str = "",
         device: str = "cuda",
         accumulation_steps: int = 4,
         checkpoint_every: int = 10,
@@ -69,6 +98,7 @@ class Trainer:
         self.config        = config
         self.run_name      = run_name
         self.arch          = arch
+        self.encoder_name  = encoder_name or getattr(config, "ENCODER_NAME", "")
         self.device        = device
         self.accumulation_steps = accumulation_steps
         self.checkpoint_every   = checkpoint_every
@@ -103,36 +133,60 @@ class Trainer:
 
     def train(self, num_epochs: int) -> None:
         """Full training loop under a single MLflow run."""
-        mlflow.set_experiment(EXPERIMENT_NAME)
+        mlflow.set_tracking_uri(self.config.MLFLOW_TRACKING_URI)
+        mlflow.set_experiment(self.config.MLFLOW_EXPERIMENT_NAME)
 
         physical_bs = self.train_loader.batch_size or 0
         eff_bs = physical_bs * self.accumulation_steps
 
         with mlflow.start_run(run_name=self.run_name):
+
+            # ── Git tags ──────────────────────────────────────────────────────
+            git_tags = _git_tags()
+            if git_tags:
+                mlflow.set_tags(git_tags)
+
+            # ── Namespaced params ─────────────────────────────────────────────
             mlflow.log_params({
-                # arch
-                "arch":                self.arch,
-                "encoder":             getattr(self.config, "ENCODER_NAME", ""),
-                "in_channels":         self.config.IN_CHANNELS,
-                "num_classes":         self.config.NUM_CLASSES,
-                # optim
-                "loss":                "weighted_cross_entropy",
-                "initial_lr":          self.config.INITIAL_LR,
-                "lr_step_size":        self.config.LR_STEP_SIZE,
-                "lr_decay":            self.config.LR_DECAY,
-                "class_weights":       str(self.config.CLASS_WEIGHTS),
+                # model
+                "model/arch":              self.arch,
+                "model/encoder":           self.encoder_name,
+                "model/encoder_depth":     getattr(self.config, "ENCODER_DEPTH", 5),
+                "model/in_channels":       self.config.IN_CHANNELS,
+                "model/num_classes":       self.config.NUM_CLASSES,
+                # train
+                "train/loss":              "weighted_cross_entropy",
+                "train/lr":                self.config.INITIAL_LR,
+                "train/lr_step":           self.config.LR_STEP_SIZE,
+                "train/lr_decay":          self.config.LR_DECAY,
+                "train/class_weights":     str(self.config.CLASS_WEIGHTS),
+                "train/batch_size":        physical_bs,
+                "train/accumulation_steps": self.accumulation_steps,
+                "train/batch_size_effective": eff_bs,
+                "train/num_epochs":        num_epochs,
+                "train/checkpoint_every":  self.checkpoint_every,
+                "train/eval_every":        self.eval_every,
                 # data
-                "physical_batch_size": physical_bs,
-                "accumulation_steps":  self.accumulation_steps,
-                "effective_batch_size": eff_bs,
-                "num_train_tiles":     len(self.train_loader.dataset),
-                "num_test_tiles":      len(self.test_loader.dataset),
+                "data/bands":              str(self.config.MODEL_BANDS),
+                "data/num_train_tiles":    len(self.train_loader.dataset),
+                "data/num_test_tiles":     len(self.test_loader.dataset),
                 # run
-                "num_epochs":          num_epochs,
+                "run/device":              self.device,
             })
 
+            # ── Model stats as metrics at step 0 ─────────────────────────────
+            mlflow.log_metrics(_model_stats(self.model), step=0)
+
+            print(f"[MLflow] {self.config.MLFLOW_TRACKING_URI}  "
+                  f"experiment: '{self.config.MLFLOW_EXPERIMENT_NAME}'  run: '{self.run_name}'")
+
+            run_start = time.time()
+
             for epoch in range(1, num_epochs + 1):
+                t0 = time.time()
                 train_loss, train_metrics = self._train_epoch(epoch)
+                train_elapsed = time.time() - t0
+
                 lr = self.optimizer.param_groups[0]["lr"]
                 self.scheduler.step()
 
@@ -142,14 +196,17 @@ class Trainer:
                     ds.new_epoch()
 
                 # ── Log training metrics ──────────────────────────────────────
+                n_train = len(self.train_loader.dataset)
                 train_log = {
-                    "train/loss":              train_loss,
-                    "train/iou_erosion":       train_metrics["iou_erosion"],
-                    "train/iou_no_erosion":    train_metrics["iou_no_erosion"],
-                    "train/mean_iou":          train_metrics["mean_iou"],
-                    "train/f1_erosion":        train_metrics["f1_erosion"],
-                    "train/precision_erosion": train_metrics["precision_erosion"],
-                    "train/recall_erosion":    train_metrics["recall_erosion"],
+                    "train/loss":                    train_loss,
+                    "train/iou/erosion":             train_metrics["iou_erosion"],
+                    "train/iou/no_erosion":          train_metrics["iou_no_erosion"],
+                    "train/iou/mean":                train_metrics["mean_iou"],
+                    "train/f1/erosion":              train_metrics["f1_erosion"],
+                    "train/precision/erosion":       train_metrics["precision_erosion"],
+                    "train/recall/erosion":          train_metrics["recall_erosion"],
+                    "train/time/epoch_duration_min": round(train_elapsed / 60, 3),
+                    "train/throughput/tiles_per_sec": round(n_train / train_elapsed, 1),
                     "lr": lr,
                 }
                 mlflow.log_metrics(train_log, step=epoch)
@@ -158,30 +215,37 @@ class Trainer:
                     f"Ep {epoch:4d}/{num_epochs} | "
                     f"loss={train_loss:.4f} | "
                     f"iou_erosion={train_metrics['iou_erosion']:.3f} | "
-                    f"f1_erosion={train_metrics['f1_erosion']:.3f} | "
-                    f"precision={train_metrics['precision_erosion']:.3f} | "
-                    f"recall={train_metrics['recall_erosion']:.3f} | "
-                    f"lr={lr:.2e}"
+                    f"f1={train_metrics['f1_erosion']:.3f} | "
+                    f"prec={train_metrics['precision_erosion']:.3f} | "
+                    f"rec={train_metrics['recall_erosion']:.3f} | "
+                    f"lr={lr:.2e} | "
+                    f"{train_elapsed:.0f}s"
                 )
 
                 # ── Periodic test evaluation ──────────────────────────────────
                 if epoch % self.eval_every == 0 or epoch == num_epochs:
+                    t1 = time.time()
                     collector = self._eval_epoch(epoch)
+                    test_elapsed = time.time() - t1
+
                     global_m  = collector.compute_global()
                     tile_mean = collector.compute_tile_average()
+                    n_test    = len(self.test_loader.dataset)
 
                     test_log = {
-                        "test/loss":                   self._last_test_loss,
-                        "test/iou_erosion":            global_m["iou_erosion"],
-                        "test/iou_no_erosion":         global_m["iou_no_erosion"],
-                        "test/mean_iou":               global_m["mean_iou"],
-                        "test/f1_erosion":             global_m["f1_erosion"],
-                        "test/precision_erosion":      global_m["precision_erosion"],
-                        "test/recall_erosion":         global_m["recall_erosion"],
-                        "test/false_alarm_erosion":    global_m["false_alarm_erosion"],
-                        "test/miss_rate_erosion":      global_m["miss_rate_erosion"],
-                        "test/tile_mean_f1_erosion":   tile_mean.get("tile_mean_f1_erosion", 0),
-                        "test/tile_mean_iou_erosion":  tile_mean.get("tile_mean_iou_erosion", 0),
+                        "test/loss":                        self._last_test_loss,
+                        "test/iou/erosion":                 global_m["iou_erosion"],
+                        "test/iou/no_erosion":              global_m["iou_no_erosion"],
+                        "test/iou/mean":                    global_m["mean_iou"],
+                        "test/f1/erosion":                  global_m["f1_erosion"],
+                        "test/precision/erosion":           global_m["precision_erosion"],
+                        "test/recall/erosion":              global_m["recall_erosion"],
+                        "test/false_alarm/erosion":         global_m["false_alarm_erosion"],
+                        "test/miss_rate/erosion":           global_m["miss_rate_erosion"],
+                        "test/tile_mean/f1_erosion":        tile_mean.get("tile_mean_f1_erosion", 0),
+                        "test/tile_mean/iou_erosion":       tile_mean.get("tile_mean_iou_erosion", 0),
+                        "test/time/epoch_duration_min":     round(test_elapsed / 60, 3),
+                        "test/throughput/tiles_per_sec":    round(n_test / test_elapsed, 1),
                     }
                     mlflow.log_metrics(test_log, step=epoch)
 
@@ -192,16 +256,19 @@ class Trainer:
 
                     print(
                         f"  TEST  | "
-                        f"iou_erosion={global_m['iou_erosion']:.3f} | "
+                        f"iou={global_m['iou_erosion']:.3f} | "
                         f"f1={global_m['f1_erosion']:.3f} | "
-                        f"precision={global_m['precision_erosion']:.3f} | "
-                        f"recall={global_m['recall_erosion']:.3f} | "
-                        f"false_alarm={global_m['false_alarm_erosion']:.3f}"
+                        f"prec={global_m['precision_erosion']:.3f} | "
+                        f"rec={global_m['recall_erosion']:.3f} | "
+                        f"false_alarm={global_m['false_alarm_erosion']:.3f} | "
+                        f"{test_elapsed:.0f}s"
                     )
 
                 # ── Checkpoint ────────────────────────────────────────────────
                 if epoch % self.checkpoint_every == 0 or epoch == num_epochs:
                     self._save_checkpoint(epoch)
+
+            mlflow.log_metric("run/total_duration_min", round((time.time() - run_start) / 60, 2))
 
     # ── Private ────────────────────────────────────────────────────────────────
 
@@ -275,5 +342,6 @@ class Trainer:
             "optimizer":  self.optimizer.state_dict(),
             "scheduler":  self.scheduler.state_dict(),
         }, path)
-        mlflow.log_artifact(str(path), artifact_path="checkpoints")
-        print(f"  → Checkpoint: {path.name}")
+        # Checkpoints are kept locally only — Cloud Run rejects large uploads (413)
+        mlflow.log_metric("checkpoint/last_saved_epoch", epoch, step=epoch)
+        print(f"  → Checkpoint: {path}")
