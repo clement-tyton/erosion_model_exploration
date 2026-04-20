@@ -27,7 +27,12 @@ import mlflow
 import torch
 import torch.nn as nn
 from torch.optim import Adam, AdamW
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    LinearLR,
+    SequentialLR,
+    StepLR,
+)
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -111,28 +116,29 @@ class Trainer:
             ignore_index=config.IGNORE_INDEX,
         )
 
-        # ── Optimizer + scheduler ─────────────────────────────────────────────
-        # SegFormer: AdamW + differential LR (backbone 10× lower than head)
-        #            + gradient clipping (transformers are sensitive to grad explosion)
-        # UNet/others: Adam (matches objecttrain)
+        # ── Optimizer ─────────────────────────────────────────────────────────
+        # SegFormer: AdamW + differential LR (encoder 10× lower than head)
+        #            + gradient clipping + warmup+cosine schedule (see _build_scheduler)
+        # UNet/others: Adam + StepLR (matches objecttrain)
         if arch.lower() == "segformer":
-            encoder_ids = {id(p) for p in model.encoder.parameters()}
+            head_lr = getattr(config, "SEGFORMER_HEAD_LR",    6e-5)
+            enc_lr  = getattr(config, "SEGFORMER_ENCODER_LR", 6e-6)
+            encoder_ids    = {id(p) for p in model.encoder.parameters()}
             encoder_params = [p for p in model.parameters() if id(p) in encoder_ids]
             head_params    = [p for p in model.parameters() if id(p) not in encoder_ids]
             self.optimizer = AdamW([
-                {"params": encoder_params, "lr": config.INITIAL_LR * 0.1},
-                {"params": head_params,    "lr": config.INITIAL_LR},
+                {"params": encoder_params, "lr": enc_lr},
+                {"params": head_params,    "lr": head_lr},
             ], weight_decay=0.01)
-            self.grad_clip_norm: float | None = 1.0
+            self.grad_clip_norm: float | None = getattr(config, "SEGFORMER_GRAD_CLIP", 0.5)
+            self._warmup_ratio: float = getattr(config, "SEGFORMER_WARMUP_RATIO", 0.05)
         else:
             self.optimizer = Adam(model.parameters(), lr=config.INITIAL_LR)
             self.grad_clip_norm = None
+            self._warmup_ratio  = 0.0
 
-        self.scheduler = StepLR(
-            self.optimizer,
-            step_size=config.LR_STEP_SIZE,
-            gamma=config.LR_DECAY,
-        )
+        # Scheduler is built lazily in train() — SegFormer needs num_epochs for warmup
+        self.scheduler = None
 
         # ── Metrics ───────────────────────────────────────────────────────────
         self._train_meter = ConfusionMeter(
@@ -144,6 +150,39 @@ class Trainer:
         self._ckpt_dir    = Path(config.CHECKPOINTS_DIR) / run_name
         self._results_dir = Path(config.EXPERIMENTS_DIR) / "results" / run_name
 
+    # ── Scheduler factory ──────────────────────────────────────────────────────
+
+    def _build_scheduler(self, num_epochs: int):
+        """
+        SegFormer : linear warmup (5 % of epochs) → cosine annealing to eta_min=1e-8.
+        UNet/CNN  : StepLR identical to objecttrain (step_size, gamma from config).
+        """
+        if self.arch.lower() == "segformer":
+            warmup_epochs = max(1, round(self._warmup_ratio * num_epochs))
+            cosine_epochs = num_epochs - warmup_epochs
+            warmup = LinearLR(
+                self.optimizer,
+                start_factor=0.01,   # starts at 1 % of target LR
+                end_factor=1.0,
+                total_iters=warmup_epochs,
+            )
+            cosine = CosineAnnealingLR(
+                self.optimizer,
+                T_max=max(1, cosine_epochs),
+                eta_min=1e-8,
+            )
+            return SequentialLR(
+                self.optimizer,
+                schedulers=[warmup, cosine],
+                milestones=[warmup_epochs],
+            )
+        else:
+            return StepLR(
+                self.optimizer,
+                step_size=self.config.LR_STEP_SIZE,
+                gamma=self.config.LR_DECAY,
+            )
+
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def train(self, num_epochs: int) -> None:
@@ -153,6 +192,8 @@ class Trainer:
 
         physical_bs = self.train_loader.batch_size or 0
         eff_bs = physical_bs * self.accumulation_steps
+
+        self.scheduler = self._build_scheduler(num_epochs)
 
         with mlflow.start_run(run_name=self.run_name):
 
@@ -172,9 +213,11 @@ class Trainer:
                 # train
                 "train/loss":              "weighted_cross_entropy",
                 "train/optimizer":         "adamw" if self.arch.lower() == "segformer" else "adam",
-                "train/lr":                self.config.INITIAL_LR,
-                "train/lr_backbone":       self.config.INITIAL_LR * 0.1 if self.arch.lower() == "segformer" else self.config.INITIAL_LR,
+                "train/lr":                self.optimizer.param_groups[-1]["lr"],   # head LR
+                "train/lr_backbone":       self.optimizer.param_groups[0]["lr"] if len(self.optimizer.param_groups) > 1 else self.optimizer.param_groups[0]["lr"],
                 "train/grad_clip_norm":    self.grad_clip_norm if self.grad_clip_norm is not None else -1,
+                "train/scheduler":         "warmup_cosine" if self.arch.lower() == "segformer" else "step_lr",
+                "train/warmup_epochs":     max(1, round(self._warmup_ratio * num_epochs)) if self.arch.lower() == "segformer" else 0,
                 "train/lr_step":           self.config.LR_STEP_SIZE,
                 "train/lr_decay":          self.config.LR_DECAY,
                 "train/class_weights":     str(self.config.CLASS_WEIGHTS),

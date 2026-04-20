@@ -51,6 +51,14 @@ LR_STEP_SIZE:   int   = int(_ot["lr_schedular_step_size"])   # 133 (epochs)
 LR_DECAY:       float = float(_ot["lr_schedular_dec_rate"])  # 0.5
 NUM_EPOCHS:     int   = int(_ot["num_epochs"])                # 400
 
+# ── SegFormer-specific training hyperparams ───────────────────────────────────
+# INITIAL_LR (1e-3) is for UNet/Adam only — transformers need much lower LR.
+# Reference: SegFormer paper + timm MiT defaults.
+SEGFORMER_HEAD_LR:      float = 6e-5   # decode head  (randomly initialised)
+SEGFORMER_ENCODER_LR:   float = 6e-6   # MiT backbone (pretrained on ImageNet)
+SEGFORMER_GRAD_CLIP:    float = 0.5    # tighter than CNN default (1.0)
+SEGFORMER_WARMUP_RATIO: float = 0.05   # 5 % of total epochs → linear warmup
+
 # ── Fixed overrides ────────────────────────────────────────────────────────────
 BATCH_SIZE:       int       = 32                                        # physical batch (×accum → effective)
 ACCUMULATION_STEPS: int     = 8                                         # effective batch = 32 × 4 = 128
