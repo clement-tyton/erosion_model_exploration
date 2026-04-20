@@ -26,7 +26,7 @@ from pathlib import Path
 import mlflow
 import torch
 import torch.nn as nn
-from torch.optim import Adam
+from torch.optim import Adam, AdamW
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -111,8 +111,23 @@ class Trainer:
             ignore_index=config.IGNORE_INDEX,
         )
 
-        # ── Optimizer + scheduler (Adam + StepLR — matches objecttrain) ──────
-        self.optimizer = Adam(model.parameters(), lr=config.INITIAL_LR)
+        # ── Optimizer + scheduler ─────────────────────────────────────────────
+        # SegFormer: AdamW + differential LR (backbone 10× lower than head)
+        #            + gradient clipping (transformers are sensitive to grad explosion)
+        # UNet/others: Adam (matches objecttrain)
+        if arch.lower() == "segformer":
+            encoder_ids = {id(p) for p in model.encoder.parameters()}
+            encoder_params = [p for p in model.parameters() if id(p) in encoder_ids]
+            head_params    = [p for p in model.parameters() if id(p) not in encoder_ids]
+            self.optimizer = AdamW([
+                {"params": encoder_params, "lr": config.INITIAL_LR * 0.1},
+                {"params": head_params,    "lr": config.INITIAL_LR},
+            ], weight_decay=0.01)
+            self.grad_clip_norm: float | None = 1.0
+        else:
+            self.optimizer = Adam(model.parameters(), lr=config.INITIAL_LR)
+            self.grad_clip_norm = None
+
         self.scheduler = StepLR(
             self.optimizer,
             step_size=config.LR_STEP_SIZE,
@@ -156,7 +171,10 @@ class Trainer:
                 "model/num_classes":       self.config.NUM_CLASSES,
                 # train
                 "train/loss":              "weighted_cross_entropy",
+                "train/optimizer":         "adamw" if self.arch.lower() == "segformer" else "adam",
                 "train/lr":                self.config.INITIAL_LR,
+                "train/lr_backbone":       self.config.INITIAL_LR * 0.1 if self.arch.lower() == "segformer" else self.config.INITIAL_LR,
+                "train/grad_clip_norm":    self.grad_clip_norm if self.grad_clip_norm is not None else -1,
                 "train/lr_step":           self.config.LR_STEP_SIZE,
                 "train/lr_decay":          self.config.LR_DECAY,
                 "train/class_weights":     str(self.config.CLASS_WEIGHTS),
@@ -184,10 +202,10 @@ class Trainer:
 
             for epoch in range(1, num_epochs + 1):
                 t0 = time.time()
-                train_loss, train_metrics = self._train_epoch(epoch)
+                train_loss, train_metrics, grad_stats = self._train_epoch(epoch)
                 train_elapsed = time.time() - t0
 
-                lr = self.optimizer.param_groups[0]["lr"]
+                lr = self.optimizer.param_groups[-1]["lr"]   # head LR (or only group)
                 self.scheduler.step()
 
                 # Notify dataset to reshuffle random index for next epoch
@@ -207,6 +225,8 @@ class Trainer:
                     "train/recall/erosion":          train_metrics["recall_erosion"],
                     "train/time/epoch_duration_min": round(train_elapsed / 60, 3),
                     "train/throughput/tiles_per_sec": round(n_train / train_elapsed, 1),
+                    "train/grad_norm/mean":          round(grad_stats["grad_norm/mean"], 4),
+                    "train/grad_norm/max":           round(grad_stats["grad_norm/max"], 4),
                     "lr": lr,
                 }
                 mlflow.log_metrics(train_log, step=epoch)
@@ -272,12 +292,13 @@ class Trainer:
 
     # ── Private ────────────────────────────────────────────────────────────────
 
-    def _train_epoch(self, epoch: int) -> tuple[float, dict]:
+    def _train_epoch(self, epoch: int) -> tuple[float, dict, dict]:
         self.model.train()
         self._train_meter.reset()
 
         total_loss = 0.0
         n_steps    = 0
+        grad_norms: list[float] = []
         self.optimizer.zero_grad()
 
         for step, (images, masks, _) in enumerate(
@@ -295,15 +316,29 @@ class Trainer:
             self._train_meter.update(logits.detach(), masks)
 
             if (step + 1) % self.accumulation_steps == 0:
+                norm = torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(),
+                    self.grad_clip_norm if self.grad_clip_norm is not None else float("inf"),
+                )
+                grad_norms.append(norm.item())
                 self.optimizer.step()
                 self.optimizer.zero_grad()
 
         # Flush remaining gradients
         if n_steps % self.accumulation_steps != 0:
+            norm = torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(),
+                self.grad_clip_norm if self.grad_clip_norm is not None else float("inf"),
+            )
+            grad_norms.append(norm.item())
             self.optimizer.step()
             self.optimizer.zero_grad()
 
-        return total_loss / max(n_steps, 1), self._train_meter.compute()
+        grad_stats = {
+            "grad_norm/mean": sum(grad_norms) / len(grad_norms) if grad_norms else 0.0,
+            "grad_norm/max":  max(grad_norms) if grad_norms else 0.0,
+        }
+        return total_loss / max(n_steps, 1), self._train_meter.compute(), grad_stats
 
     @torch.no_grad()
     def _eval_epoch(self, epoch: int) -> TileMetricsCollector:

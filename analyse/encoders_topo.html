@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMP Encoders — Priority Topo</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg2: #1a1d27;
+    --bg3: #22263a;
+    --border: #2e3350;
+    --text: #e2e8f0;
+    --muted: #8892b0;
+    --accent: #64ffda;
+    --accent2: #7b8cde;
+    --gold: #ffd166;
+    --red: #ef4565;
+    --green: #06d6a0;
+    --orange: #f4a261;
+    --purple: #c084fc;
+    --pink: #f472b6;
+    --yellow: #facc15;
+    --tier1: #064e3b;
+    --tier1b: #065f46;
+    --tier2: #1e3a5f;
+    --tier2b: #1d4ed8;
+    --tier3: #3b1f3b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.6; }
+
+  header { padding: 2.5rem 2rem 1.5rem; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 1.8rem; color: var(--accent); letter-spacing: -0.5px; }
+  header p { color: var(--muted); margin-top: 0.4rem; max-width: 700px; }
+
+  nav { display: flex; gap: 1rem; padding: 1rem 2rem; background: var(--bg2); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  nav a { color: var(--muted); text-decoration: none; padding: 0.3rem 0.8rem; border-radius: 20px; border: 1px solid var(--border); font-size: 12px; transition: all 0.15s; }
+  nav a:hover { background: var(--bg3); color: var(--accent); border-color: var(--accent); }
+
+  main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
+
+  /* PRIORITY SECTION */
+  .priority-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 3rem; }
+  @media (max-width: 900px) { .priority-grid { grid-template-columns: 1fr; } }
+
+  .model-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .model-card-header { padding: 1rem 1.5rem; display: flex; align-items: center; gap: 0.8rem; border-bottom: 1px solid var(--border); }
+  .model-card-header h2 { font-size: 1.1rem; }
+  .badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .badge-unet { background: #1d4ed8; color: #bfdbfe; }
+  .badge-segformer { background: #6d28d9; color: #ddd6fe; }
+
+  .tier { margin: 0; }
+  .tier-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 0.5rem 1.5rem; display: flex; align-items: center; gap: 0.5rem; }
+  .tier-1 .tier-label { background: var(--tier1); color: var(--green); }
+  .tier-2 .tier-label { background: #1c2b4a; color: var(--accent2); }
+  .tier-3 .tier-label { background: #2a1f30; color: var(--purple); }
+  .tier-skip .tier-label { background: #2a1a1a; color: var(--red); }
+
+  .tier-item { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; padding: 0.6rem 1.5rem; border-bottom: 1px solid var(--border); align-items: start; }
+  .tier-item:last-child { border-bottom: none; }
+  .tier-item-name { font-family: 'Courier New', monospace; color: var(--accent); font-size: 13px; font-weight: 600; }
+  .tier-item-why { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .params-badge { font-size: 11px; background: var(--bg3); color: var(--gold); padding: 2px 8px; border-radius: 6px; white-space: nowrap; font-family: monospace; align-self: center; }
+
+  /* FULL TABLE SECTION */
+  section { margin-bottom: 3rem; }
+  section h2 { font-size: 1.2rem; color: var(--accent2); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 0.8rem; }
+  .family-tag { font-size: 11px; padding: 2px 10px; border-radius: 20px; font-weight: 700; }
+
+  table { width: 100%; border-collapse: collapse; background: var(--bg2); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+  thead { background: var(--bg3); }
+  th { padding: 0.6rem 1rem; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); font-weight: 600; }
+  td { padding: 0.55rem 1rem; border-bottom: 1px solid var(--border); font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg3); }
+  .enc-name { font-family: 'Courier New', monospace; color: var(--accent); font-weight: 600; }
+  .params { color: var(--gold); font-family: monospace; font-size: 12px; }
+  .weights { color: var(--muted); font-size: 11px; }
+  .prio { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+  .p1 { background: #064e3b; color: #6ee7b7; }
+  .p2 { background: #1e3a5f; color: #93c5fd; }
+  .p3 { background: #3b2f00; color: #fcd34d; }
+  .skip { background: #3b1a1a; color: #fca5a5; }
+
+  /* CONTEXT BOX */
+  .context-box { background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; padding: 1.2rem 1.5rem; margin-bottom: 2rem; }
+  .context-box h3 { color: var(--accent); font-size: 0.9rem; margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.5px; }
+  .context-box ul { list-style: none; }
+  .context-box li { color: var(--muted); font-size: 13px; padding: 0.15rem 0; }
+  .context-box li::before { content: '→ '; color: var(--accent); }
+
+  .section-intro { color: var(--muted); font-size: 13px; margin-bottom: 1rem; }
+
+  /* color per family */
+  .f-resnet { color: #60a5fa; }
+  .f-resnext { color: #818cf8; }
+  .f-efficientnet { color: #34d399; }
+  .f-mit { color: #c084fc; }
+  .f-densenet { color: #f59e0b; }
+  .f-senet { color: #f472b6; }
+  .f-mobileone { color: #4ade80; }
+  .f-mobilenet { color: #86efac; }
+  .f-vgg { color: #94a3b8; }
+  .f-dpn { color: #67e8f9; }
+  .f-inception { color: #fda4af; }
+  .f-xception { color: #fb923c; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SMP Encoders — Priority Topo</h1>
+  <p>Segmentation Models PyTorch · v0.4.0 · Ranked for <strong>UNet</strong> and <strong>Segformer</strong> on 6-band remote sensing imagery (RGB + DSM + DSM_NORM + MEP)</p>
+</header>
+
+<nav>
+  <a href="#priority">Priority picks</a>
+  <a href="#context">Your context</a>
+  <a href="#resnet">ResNet/NeXt</a>
+  <a href="#efficientnet">EfficientNet</a>
+  <a href="#mit">MiT (Segformer)</a>
+  <a href="#senet">SENet</a>
+  <a href="#densenet">DenseNet</a>
+  <a href="#mobileone">MobileOne</a>
+  <a href="#other">Others</a>
+</nav>
+
+<main>
+
+<!-- CONTEXT -->
+<div id="context" class="context-box" style="margin-top:2rem;">
+  <h3>Your setup constraints</h3>
+  <ul>
+    <li>6-band input → must modify first conv layer (all encoders require <code>in_channels=6</code>)</li>
+    <li>Erosion detection → fine-grained boundary accuracy matters → avoid too much downsampling</li>
+    <li>Small target class (erosion rare) → encoder richness and skip connections matter a lot for UNet</li>
+    <li>Remote sensing imagery → advprop / noisy-student weights may help (high dynamic range)</li>
+    <li>For Segformer: MiT encoders are native backbone — other families need adapter layers</li>
+  </ul>
+</div>
+
+<!-- PRIORITY GRID -->
+<div id="priority" class="priority-grid">
+
+  <!-- UNET CARD -->
+  <div class="model-card">
+    <div class="model-card-header">
+      <span class="badge badge-unet">UNet</span>
+      <h2>Priority order for UNet</h2>
+    </div>
+
+    <div class="tier tier-1">
+      <div class="tier-label">🥇 Tier 1 — Start here</div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">efficientnet-b4</div>
+          <div class="tier-item-why">Best accuracy/size tradeoff. Skip features at 5 scales, great for dense prediction. advprop weights.</div>
+        </div>
+        <span class="params-badge">17M</span>
+      </div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">se_resnext50_32x4d</div>
+          <div class="tier-item-why">Channel attention + grouped conv. Excels on multi-band imagery with texture patterns.</div>
+        </div>
+        <span class="params-badge">25M</span>
+      </div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">resnet50</div>
+          <div class="tier-item-why">Battle-tested baseline. ssl/swsl weights are especially good. Always run this first for comparison.</div>
+        </div>
+        <span class="params-badge">23M</span>
+      </div>
+    </div>
+
+    <div class="tier tier-2">
+      <div class="tier-label">🥈 Tier 2 — Good follow-up</div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">timm-efficientnet-b4</div>
+          <div class="tier-item-why">Same as b4 but noisy-student weights — better for out-of-distribution imagery like remote sensing.</div>
+        </div>
+        <span class="params-badge">17M</span>
+      </div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">densenet161</div>
+          <div class="tier-item-why">Dense skip connections = excellent feature reuse. Slower but high detail recovery at decoder.</div>
+        </div>
+        <span class="params-badge">26M</span>
+      </div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">mit_b2</div>
+          <div class="tier-item-why">Transformer attention on multi-scale features. Works with UNet decoder too, not just Segformer head.</div>
+        </div>
+        <span class="params-badge">24M</span>
+      </div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">resnext50_32x4d</div>
+          <div class="tier-item-why">Grouped convolutions capture richer features at same cost as resnet50. ssl/swsl weights.</div>
+        </div>
+        <span class="params-badge">22M</span>
+      </div>
+    </div>
+
+    <div class="tier tier-3">
+      <div class="tier-label">🥉 Tier 3 — Situational</div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">efficientnet-b6 / b7</div>
+          <div class="tier-item-why">Big gains but 40-63M params — only if GPU memory allows and b4 saturated.</div>
+        </div>
+        <span class="params-badge">40-63M</span>
+      </div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">mobileone_s3 / s4</div>
+          <div class="tier-item-why">Ultra-fast inference. Good for production if accuracy is within margin of bigger encoders.</div>
+        </div>
+        <span class="params-badge">8-12M</span>
+      </div>
+    </div>
+
+    <div class="tier tier-skip">
+      <div class="tier-label">⛔ Skip for now</div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">vgg*, resnext101_32x32d+, timm-efficientnet-l2</div>
+          <div class="tier-item-why">VGG: outdated, no BN variants are worse. Giant ResNeXt/L2: absurd param count for marginal gain.</div>
+        </div>
+        <span class="params-badge">400M+</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEGFORMER CARD -->
+  <div class="model-card">
+    <div class="model-card-header">
+      <span class="badge badge-segformer">Segformer</span>
+      <h2>Priority order for Segformer</h2>
+    </div>
+
+    <div class="tier tier-1">
+      <div class="tier-label">🥇 Tier 1 — Native backbone, start here</div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">mit_b2</div>
+          <div class="tier-item-why">Sweet spot. Designed for Segformer. 4-stage hierarchical transformer, excellent for dense erosion patterns.</div>
+        </div>
+        <span class="params-badge">24M</span>
+      </div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">mit_b3</div>
+          <div class="tier-item-why">Stronger than b2, manageable GPU cost. Use if b2 plateaus.</div>
+        </div>
+        <span class="params-badge">44M</span>
+      </div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">mit_b1</div>
+          <div class="tier-item-why">Fast iteration baseline. Good for debugging pipeline before scaling up.</div>
+        </div>
+        <span class="params-badge">13M</span>
+      </div>
+    </div>
+
+    <div class="tier tier-2">
+      <div class="tier-label">🥈 Tier 2 — Explore if MiT saturates</div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">mit_b4</div>
+          <div class="tier-item-why">Large transformer, best MiT accuracy. Only if you have VRAM and b3 isn't enough.</div>
+        </div>
+        <span class="params-badge">60M</span>
+      </div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">efficientnet-b4 + Segformer head</div>
+          <div class="tier-item-why">CNN backbone with Segformer decoder. Less natural but works — compare vs UNet variant.</div>
+        </div>
+        <span class="params-badge">17M</span>
+      </div>
+    </div>
+
+    <div class="tier tier-3">
+      <div class="tier-label">🥉 Tier 3 — Experimental</div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">mit_b5</div>
+          <div class="tier-item-why">81M params — heavy. Only justified for publication-level results or very large dataset.</div>
+        </div>
+        <span class="params-badge">81M</span>
+      </div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">mit_b0</div>
+          <div class="tier-item-why">3M — nano model. Good only for ablation or deployment on edge devices.</div>
+        </div>
+        <span class="params-badge">3M</span>
+      </div>
+    </div>
+
+    <div class="tier tier-skip">
+      <div class="tier-label">⛔ Not designed for Segformer head</div>
+      <div class="tier-item">
+        <div>
+          <div class="tier-item-name">VGG, DPN, SENet154, Inception</div>
+          <div class="tier-item-why">Architecturally incompatible or require heavy adapter. Not worth the effort vs native MiT.</div>
+        </div>
+        <span class="params-badge">—</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- RECOMMENDED EXPERIMENT ORDER -->
+<div class="context-box" style="border-left-color: var(--gold);">
+  <h3 style="color: var(--gold);">Recommended experiment sequence</h3>
+  <ul>
+    <li><strong>Run 1:</strong> UNet + resnet50 (imagenet) → establish baseline F1</li>
+    <li><strong>Run 2:</strong> Segformer + mit_b2 (imagenet) → see if transformer head beats UNet baseline</li>
+    <li><strong>Run 3:</strong> UNet + efficientnet-b4 (advprop) → best CNN challenger</li>
+    <li><strong>Run 4:</strong> UNet + se_resnext50_32x4d → channel attention variant</li>
+    <li><strong>Run 5:</strong> Segformer + mit_b3 → scale up transformer if run 2 was best</li>
+    <li><strong>Run 6+:</strong> noisy-student variants, densenet161, mit_b4 based on gap analysis</li>
+  </ul>
+</div>
+
+<!-- FULL TABLES -->
+
+<section id="resnet">
+  <h2><span class="family-tag f-resnet">ResNet / ResNeXt</span></h2>
+  <p class="section-intro">Solid, well-understood. ssl/swsl semi-supervised weights often outperform pure imagenet for domain shift. ResNeXt adds grouped convolutions.</p>
+  <table>
+    <thead><tr><th>Encoder</th><th>Params</th><th>Weights</th><th>UNet</th><th>Segformer</th></tr></thead>
+    <tbody>
+      <tr><td class="enc-name">resnet18</td><td class="params">11M</td><td class="weights">imagenet, ssl, swsl</td><td><span class="prio p3">baseline</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">resnet34</td><td class="params">21M</td><td class="weights">imagenet</td><td><span class="prio p3">ok</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">resnet50</td><td class="params">23M</td><td class="weights">imagenet, ssl, swsl</td><td><span class="prio p1">Tier 1 ★</span></td><td><span class="prio p2">Tier 2</span></td></tr>
+      <tr><td class="enc-name">resnet101</td><td class="params">42M</td><td class="weights">imagenet</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p2">Tier 2</span></td></tr>
+      <tr><td class="enc-name">resnet152</td><td class="params">58M</td><td class="weights">imagenet</td><td><span class="prio p3">heavy</span></td><td><span class="prio skip">skip</span></td></tr>
+      <tr><td class="enc-name">resnext50_32x4d</td><td class="params">22M</td><td class="weights">imagenet, ssl, swsl</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p2">Tier 2</span></td></tr>
+      <tr><td class="enc-name">resnext101_32x4d</td><td class="params">42M</td><td class="weights">ssl, swsl</td><td><span class="prio p3">ok</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">resnext101_32x8d</td><td class="params">86M</td><td class="weights">imagenet, instagram, ssl, swsl</td><td><span class="prio p3">heavy</span></td><td><span class="prio skip">skip</span></td></tr>
+      <tr><td class="enc-name">resnext101_32x16d+</td><td class="params">191-826M</td><td class="weights">instagram, ssl, swsl</td><td><span class="prio skip">skip</span></td><td><span class="prio skip">skip</span></td></tr>
+      <tr><td class="enc-name">timm-skresnet18/34</td><td class="params">11-21M</td><td class="weights">imagenet</td><td><span class="prio p3">ok</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">timm-skresnext50_32x4d</td><td class="params">23M</td><td class="weights">imagenet</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p2">Tier 2</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="efficientnet">
+  <h2><span class="family-tag f-efficientnet">EfficientNet</span></h2>
+  <p class="section-intro">Compound scaling — best accuracy-per-param family for UNet. timm variants add noisy-student weights trained on 300M images — better generalization for remote sensing.</p>
+  <table>
+    <thead><tr><th>Encoder</th><th>Params</th><th>Weights</th><th>UNet</th><th>Segformer</th></tr></thead>
+    <tbody>
+      <tr><td class="enc-name">efficientnet-b0</td><td class="params">4M</td><td class="weights">imagenet, advprop</td><td><span class="prio p3">tiny</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">efficientnet-b1</td><td class="params">6M</td><td class="weights">imagenet, advprop</td><td><span class="prio p3">ok</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">efficientnet-b2</td><td class="params">7M</td><td class="weights">imagenet, advprop</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p2">Tier 2</span></td></tr>
+      <tr><td class="enc-name">efficientnet-b3</td><td class="params">10M</td><td class="weights">imagenet, advprop</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p2">Tier 2</span></td></tr>
+      <tr><td class="enc-name">efficientnet-b4</td><td class="params">17M</td><td class="weights">imagenet, advprop</td><td><span class="prio p1">Tier 1 ★</span></td><td><span class="prio p2">Tier 2</span></td></tr>
+      <tr><td class="enc-name">efficientnet-b5</td><td class="params">28M</td><td class="weights">imagenet, advprop</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">efficientnet-b6</td><td class="params">40M</td><td class="weights">imagenet, advprop</td><td><span class="prio p3">heavy</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">efficientnet-b7</td><td class="params">63M</td><td class="weights">imagenet, advprop</td><td><span class="prio p3">heavy</span></td><td><span class="prio skip">skip</span></td></tr>
+      <tr><td class="enc-name">timm-efficientnet-b4 ⭐</td><td class="params">17M</td><td class="weights">imagenet, advprop, noisy-student</td><td><span class="prio p1">Tier 1 ★</span></td><td><span class="prio p2">Tier 2</span></td></tr>
+      <tr><td class="enc-name">timm-efficientnet-b5</td><td class="params">28M</td><td class="weights">imagenet, advprop, noisy-student</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p2">Tier 2</span></td></tr>
+      <tr><td class="enc-name">timm-efficientnet-b8</td><td class="params">84M</td><td class="weights">imagenet, advprop</td><td><span class="prio p3">heavy</span></td><td><span class="prio skip">skip</span></td></tr>
+      <tr><td class="enc-name">timm-efficientnet-l2</td><td class="params">474M</td><td class="weights">noisy-student</td><td><span class="prio skip">skip</span></td><td><span class="prio skip">skip</span></td></tr>
+      <tr><td class="enc-name">timm-tf_efficientnet_lite0-4</td><td class="params">3-11M</td><td class="weights">imagenet</td><td><span class="prio p3">mobile</span></td><td><span class="prio p3">mobile</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="mit">
+  <h2><span class="family-tag f-mit">Mix Vision Transformer (MiT) — Native Segformer backbone</span></h2>
+  <p class="section-intro">Hierarchical transformer designed specifically for Segformer. Overlapping patch embeddings + efficient self-attention. The only family where Segformer is truly "home".</p>
+  <table>
+    <thead><tr><th>Encoder</th><th>Params</th><th>Weights</th><th>UNet</th><th>Segformer</th></tr></thead>
+    <tbody>
+      <tr><td class="enc-name">mit_b0</td><td class="params">3M</td><td class="weights">imagenet</td><td><span class="prio p3">ok</span></td><td><span class="prio p3">nano</span></td></tr>
+      <tr><td class="enc-name">mit_b1</td><td class="params">13M</td><td class="weights">imagenet</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p1">Tier 1 ★</span></td></tr>
+      <tr><td class="enc-name">mit_b2 ⭐</td><td class="params">24M</td><td class="weights">imagenet</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p1">Tier 1 ★★</span></td></tr>
+      <tr><td class="enc-name">mit_b3</td><td class="params">44M</td><td class="weights">imagenet</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p1">Tier 1 ★</span></td></tr>
+      <tr><td class="enc-name">mit_b4</td><td class="params">60M</td><td class="weights">imagenet</td><td><span class="prio p3">heavy</span></td><td><span class="prio p2">Tier 2</span></td></tr>
+      <tr><td class="enc-name">mit_b5</td><td class="params">81M</td><td class="weights">imagenet</td><td><span class="prio skip">skip</span></td><td><span class="prio p3">heavy</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="senet">
+  <h2><span class="family-tag f-senet">SENet — Squeeze & Excitation</span></h2>
+  <p class="section-intro">Channel attention mechanism. Very useful when different spectral bands (RGB vs DSM) have different informational weight — SE learns to up/downweight them.</p>
+  <table>
+    <thead><tr><th>Encoder</th><th>Params</th><th>Weights</th><th>UNet</th><th>Segformer</th></tr></thead>
+    <tbody>
+      <tr><td class="enc-name">se_resnet50</td><td class="params">26M</td><td class="weights">imagenet</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p2">Tier 2</span></td></tr>
+      <tr><td class="enc-name">se_resnet101</td><td class="params">47M</td><td class="weights">imagenet</td><td><span class="prio p3">ok</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">se_resnet152</td><td class="params">64M</td><td class="weights">imagenet</td><td><span class="prio p3">heavy</span></td><td><span class="prio skip">skip</span></td></tr>
+      <tr><td class="enc-name">se_resnext50_32x4d ⭐</td><td class="params">25M</td><td class="weights">imagenet</td><td><span class="prio p1">Tier 1 ★</span></td><td><span class="prio p2">Tier 2</span></td></tr>
+      <tr><td class="enc-name">se_resnext101_32x4d</td><td class="params">46M</td><td class="weights">imagenet</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">senet154</td><td class="params">113M</td><td class="weights">imagenet</td><td><span class="prio skip">skip</span></td><td><span class="prio skip">skip</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="densenet">
+  <h2><span class="family-tag f-densenet">DenseNet</span></h2>
+  <p class="section-intro">Every layer connects to all subsequent layers — maximum feature reuse. Excellent for UNet where skip connections already exist. Slower training but high detail recovery.</p>
+  <table>
+    <thead><tr><th>Encoder</th><th>Params</th><th>Weights</th><th>UNet</th><th>Segformer</th></tr></thead>
+    <tbody>
+      <tr><td class="enc-name">densenet121</td><td class="params">6M</td><td class="weights">imagenet</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">densenet169</td><td class="params">12M</td><td class="weights">imagenet</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">densenet201</td><td class="params">18M</td><td class="weights">imagenet</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p3">ok</span></td></tr>
+      <tr><td class="enc-name">densenet161 ⭐</td><td class="params">26M</td><td class="weights">imagenet</td><td><span class="prio p2">Tier 2</span></td><td><span class="prio p3">ok</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="mobileone">
+  <h2><span class="family-tag f-mobileone">MobileOne</span></h2>
+  <p class="section-intro">Apple's ultra-efficient architecture. Re-parameterized at inference — train-time branches collapse to a single conv. Use for production deployments where inference speed matters.</p>
+  <table>
+    <thead><tr><th>Encoder</th><th>Params</th><th>Weights</th><th>UNet</th><th>Segformer</th></tr></thead>
+    <tbody>
+      <tr><td class="enc-name">mobileone_s0</td><td class="params">4M</td><td class="weights">imagenet</td><td><span class="prio p3">mobile</span></td><td><span class="prio p3">mobile</span></td></tr>
+      <tr><td class="enc-name">mobileone_s1</td><td class="params">3M</td><td class="weights">imagenet</td><td><span class="prio p3">mobile</span></td><td><span class="prio p3">mobile</span></td></tr>
+      <tr><td class="enc-name">mobileone_s2</td><td class="params">5M</td><td class="weights">imagenet</td><td><span class="prio p3">mobile</span></td><td><span class="prio p3">mobile</span></td></tr>
+      <tr><td class="enc-name">mobileone_s3 ⭐</td><td class="params">8M</td><td class="weights">imagenet</td><td><span class="prio p3">Tier 3</span></td><td><span class="prio p3">Tier 3</span></td></tr>
+      <tr><td class="enc-name">mobileone_s4</td><td class="params">12M</td><td class="weights">imagenet</td><td><span class="prio p3">Tier 3</span></td><td><span class="prio p3">Tier 3</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="other">
+  <h2><span class="family-tag f-vgg">Others — VGG / DPN / Inception / Xception / MobileNet</span></h2>
+  <p class="section-intro">Legacy or niche families. Generally skip unless you have a specific reason.</p>
+  <table>
+    <thead><tr><th>Encoder</th><th>Family</th><th>Params</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td class="enc-name">vgg11/13/16/19 (_bn)</td><td class="f-vgg">VGG</td><td class="params">9-20M</td><td><span class="prio skip">skip — outdated, no residuals</span></td></tr>
+      <tr><td class="enc-name">dpn68 / dpn68b</td><td class="f-dpn">DPN</td><td class="params">11M</td><td><span class="prio p3">ok — hybrid ResNet+DenseNet</span></td></tr>
+      <tr><td class="enc-name">dpn92 / dpn98 / dpn107 / dpn131</td><td class="f-dpn">DPN</td><td class="params">34-84M</td><td><span class="prio p3">situational</span></td></tr>
+      <tr><td class="enc-name">inceptionresnetv2</td><td class="f-inception">Inception</td><td class="params">54M</td><td><span class="prio p3">ok if you have the weights</span></td></tr>
+      <tr><td class="enc-name">inceptionv4</td><td class="f-inception">Inception</td><td class="params">41M</td><td><span class="prio skip">skip — complex topology, slow</span></td></tr>
+      <tr><td class="enc-name">xception</td><td class="f-xception">Xception</td><td class="params">20M</td><td><span class="prio p3">ok — depthwise sep. conv, good for texture</span></td></tr>
+      <tr><td class="enc-name">mobilenet_v2</td><td class="f-mobilenet">MobileNet</td><td class="params">2M</td><td><span class="prio p3">mobile only</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+
+<footer style="text-align:center; padding: 2rem; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); margin-top: 2rem;">
+  SMP v0.4.0 · Generated for erosion R&D · 6-band remote sensing (RGB + DSM + DSM_NORM + MEP)
+</footer>
+
+</body>
+</html>

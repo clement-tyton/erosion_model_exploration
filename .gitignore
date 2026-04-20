@@ -9,7 +9,6 @@ Experiments_MLFLOW/checkpoints/
 output/
 
 # Large metadata / tile manifest JSONs
-EROSION_DATASET_*.json
 tiles_locations_json/
 
 # Secrets

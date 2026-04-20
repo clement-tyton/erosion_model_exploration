@@ -88,6 +88,15 @@
     "dataset_name": "v3_split_test_final",
     "tiles_json_id": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
     "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_243.pth"
+  },
+  {
+    "model_file":   "model_v3_split_test_epoch_1819.pth",
+    "version":      "v3",
+    "epoch":        1819,
+    "description":  "v3 from scratch — epoch 1819",
+    "dataset_name": "v3_split_test_final",
+    "tiles_json_id": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
+    "s3_model":    "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/8b454895-a581-4d0f-9ac6-7b37af1e4245/model_epoch_1819.pth"
   }
 ]
-
+  
