@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 
 
@@ -63,96 +64,116 @@ def _compute_curves(metrics_path: str) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Plot helpers — Lorenz / metric curves
+# Plot helpers — unified 2×2 subplot (ggplot-like tight layout)
 # ---------------------------------------------------------------------------
 
-_W = 530    # chart width  (slightly landscape)
-_H = 430    # chart height
+def _combined_fig(
+    curves: pd.DataFrame,
+    model_stem: str,
+    n_tiles: int,
+    overall_prec: float,
+    overall_recall: float,
+    overall_f1: float,
+) -> go.Figure:
+    """Single Plotly figure with 4 tight subplots — much closer to ggplot facets."""
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=[
+            f"Lorenz curve · {n_tiles:,} tiles with erosion",
+            "Global precision (erosion)",
+            "Global recall (erosion)",
+            "Global F1 score (erosion)",
+        ],
+        vertical_spacing=0.12,
+        horizontal_spacing=0.09,
+    )
 
+    x = curves["x"]
 
-def _lorenz_fig(curves: pd.DataFrame, model_stem: str, n_tiles: int) -> go.Figure:
-    x, y = curves["x"], curves["lorenz_y"]
-
-    fig = go.Figure()
+    # ── (1,1) Lorenz ──────────────────────────────────────────────────────────
+    # Diagonal first so fill="tonexty" fills between diagonal and curve
     fig.add_trace(go.Scatter(
-        x=x, y=y, mode="lines", name="Lorenz curve",
+        x=[0, 100], y=[0, 100], mode="lines",
+        line=dict(color="rgba(255,255,255,0.25)", width=1, dash="dot"),
+        showlegend=False, hoverinfo="skip",
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=x, y=curves["lorenz_y"], mode="lines", name="Lorenz",
         line=dict(color="#4a9eda", width=2.5),
-        fill="tonexty", fillcolor="rgba(74,158,218,0.12)",
-    ))
-    fig.add_trace(go.Scatter(
-        x=[0, 100], y=[0, 100], mode="lines", name="Equality",
-        line=dict(color="white", width=1, dash="dot"),
-    ))
+        fill="tonexty", fillcolor="rgba(74,158,218,0.11)",
+        hovertemplate="%{x:.1f}% tiles → %{y:.1f}% erosion<extra></extra>",
+    ), row=1, col=1)
 
     for pct in [10, 20, 50]:
         idx = int(np.searchsorted(x, pct))
-        if idx >= len(y):
-            continue
-        ero = float(y.iloc[idx])
-        fig.add_annotation(
-            x=pct, y=ero,
-            text=f"{pct}%→{ero:.1f}%",
-            showarrow=True, arrowhead=2, arrowcolor="#aaa",
-            font=dict(size=9, color="#aaa"),
-            ax=28, ay=-22,
-        )
+        if idx < len(curves):
+            ero = float(curves["lorenz_y"].iloc[idx])
+            fig.add_annotation(
+                x=pct, y=ero, xref="x", yref="y",
+                text=f"{pct}%→{ero:.0f}%",
+                showarrow=True, arrowhead=2, arrowcolor="#777",
+                font=dict(size=8, color="#aaa"), ax=26, ay=-18,
+            )
 
-    fig.update_layout(
-        title=f"Lorenz — {model_stem} · {n_tiles:,} tiles",
-        title_font_size=13,
-        xaxis_title="% of tiles →",
-        yaxis_title="% erosion pixels",
-        xaxis=dict(range=[0, 100], ticksuffix="%"),
-        yaxis=dict(range=[0, 100], ticksuffix="%"),
-        height=_H, width=_W,
-        legend=dict(orientation="h", y=1.08, font_size=11),
-        margin=dict(l=50, r=20, t=55, b=45),
-    )
-    return fig
-
-
-def _metric_fig(
-    curves: pd.DataFrame,
-    col: str,
-    title: str,
-    color: str,
-    overall_val: float,
-) -> go.Figure:
-    x, y = curves["x"], curves[col]
-    fig = go.Figure()
+    # ── (1,2) Precision ───────────────────────────────────────────────────────
     fig.add_trace(go.Scatter(
-        x=x, y=y, mode="lines",
-        line=dict(color=color, width=2.5),
-        hovertemplate="Tiles: %{x:.1f}%<br>" + title + ": %{y:.1f}%<extra></extra>",
-    ))
-    fig.add_hline(
-        y=overall_val * 100,
-        line_dash="dot", line_color=color, line_width=1,
-        annotation_text=f"Overall {overall_val * 100:.1f}%",
-        annotation_position="top right",
-    )
+        x=x, y=curves["precision"], mode="lines", name="Precision",
+        line=dict(color="#f0983a", width=2.5),
+        hovertemplate="%{x:.1f}% tiles → prec %{y:.1f}%<extra></extra>",
+    ), row=1, col=2)
+    fig.add_hline(y=overall_prec * 100, line_dash="dot", line_color="#f0983a",
+                  line_width=1.2, row=1, col=2,
+                  annotation_text=f"  {overall_prec * 100:.1f}%",
+                  annotation_position="bottom right",
+                  annotation_font=dict(size=9, color="#f0983a"))
 
-    below = np.where(y.values < 50)[0]
-    if len(below):
-        ix = below[0]
-        fig.add_annotation(
-            x=float(x.iloc[ix]), y=float(y.iloc[ix]),
-            text=f"<50% at {float(x.iloc[ix]):.1f}%",
-            showarrow=True, arrowhead=2, arrowcolor="#aaa",
-            font=dict(size=9, color="#aaa"),
-            ax=30, ay=-20,
+    # ── (2,1) Recall ──────────────────────────────────────────────────────────
+    fig.add_trace(go.Scatter(
+        x=x, y=curves["recall"], mode="lines", name="Recall",
+        line=dict(color="#3acf7a", width=2.5),
+        hovertemplate="%{x:.1f}% tiles → rec %{y:.1f}%<extra></extra>",
+    ), row=2, col=1)
+    fig.add_hline(y=overall_recall * 100, line_dash="dot", line_color="#3acf7a",
+                  line_width=1.2, row=2, col=1,
+                  annotation_text=f"  {overall_recall * 100:.1f}%",
+                  annotation_position="bottom right",
+                  annotation_font=dict(size=9, color="#3acf7a"))
+
+    # ── (2,2) F1 ──────────────────────────────────────────────────────────────
+    fig.add_trace(go.Scatter(
+        x=x, y=curves["f1"], mode="lines", name="F1",
+        line=dict(color="#c85ab4", width=2.5),
+        hovertemplate="%{x:.1f}% tiles → F1 %{y:.1f}%<extra></extra>",
+    ), row=2, col=2)
+    fig.add_hline(y=overall_f1 * 100, line_dash="dot", line_color="#c85ab4",
+                  line_width=1.2, row=2, col=2,
+                  annotation_text=f"  {overall_f1 * 100:.1f}%",
+                  annotation_position="bottom right",
+                  annotation_font=dict(size=9, color="#c85ab4"))
+
+    # ── Shared axis formatting ─────────────────────────────────────────────────
+    _grid = dict(gridcolor="rgba(255,255,255,0.07)", gridwidth=1)
+    for r, c, yrange in [(1,1,[0,100]), (1,2,[0,105]), (2,1,[0,105]), (2,2,[0,105])]:
+        fig.update_xaxes(
+            range=[0, 100], ticksuffix="%", title_text="% of tiles (sorted by erosion)",
+            title_font_size=10, tickfont_size=9, row=r, col=c, **_grid,
+        )
+        fig.update_yaxes(
+            range=yrange, ticksuffix="%",
+            tickfont_size=9, row=r, col=c, **_grid,
         )
 
     fig.update_layout(
-        title=title,
-        xaxis_title="% of tiles →",
-        yaxis_title=title,
-        xaxis=dict(range=[0, 100], ticksuffix="%"),
-        yaxis=dict(range=[0, 105], ticksuffix="%"),
-        height=_H, width=_W,
+        height=740,
         showlegend=False,
-        margin=dict(l=50, r=20, t=40, b=45),
+        margin=dict(l=52, r=22, t=50, b=38),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(size=11),
     )
+    # Subtitle font size
+    for ann in fig.layout.annotations:
+        ann.font.size = 12
     return fig
 
 
@@ -303,25 +324,32 @@ def _variogram_fig(result: dict) -> go.Figure:
     range_      = result["range_"]
     tile_size_m = result["tile_size_m"]
 
+    # ── Transform to √γ — "semi-deviation" in px ─────────────────────────────
+    sqrt_gamma = np.sqrt(vario["gamma"].values)
+
     fig = go.Figure()
 
-    # Empirical points — marker size ∝ log(n_pairs), kept small
     sizes = np.clip(np.log1p(vario["n_pairs"].values) * 2.0, 4, 13)
     fig.add_trace(go.Scatter(
-        x=vario["lag_m"], y=vario["gamma"],
+        x=vario["lag_m"], y=sqrt_gamma,
         mode="markers",
         marker=dict(color="#4a9eda", size=sizes.tolist(), opacity=0.9,
                     line=dict(color="white", width=0.5)),
-        name="Empirical γ(h) — size ∝ n pairs",
-        hovertemplate="h = %{x:.1f} m<br>γ = %{y:.3e}<br>n pairs: %{text}<extra></extra>",
+        name="√γ(h) empirical  (size ∝ n pairs)",
+        hovertemplate=(
+            "h = %{x:.1f} m<br>"
+            "√γ = %{y:.0f} px<br>"
+            "n pairs: %{text}<extra></extra>"
+        ),
         text=vario["n_pairs"].tolist(),
     ))
 
     if range_ is not None:
-        h_fit = np.linspace(0, float(vario["lag_m"].max()), 500)
-        g_fit = _spherical_model(h_fit, nugget, sill, range_)
+        h_fit      = np.linspace(0, float(vario["lag_m"].max()), 500)
+        g_fit      = _spherical_model(h_fit, nugget, sill, range_)
+        sqrt_g_fit = np.sqrt(g_fit)
         fig.add_trace(go.Scatter(
-            x=h_fit, y=g_fit, mode="lines",
+            x=h_fit, y=sqrt_g_fit, mode="lines",
             line=dict(color="#e05252", width=2.2),
             name=f"Spherical fit — range = {range_:.1f} m",
         ))
@@ -333,14 +361,20 @@ def _variogram_fig(result: dict) -> go.Figure:
             annotation_font=dict(size=10, color="#e05252"),
         )
         fig.add_hline(
-            y=nugget + sill,
+            y=np.sqrt(nugget + sill),
             line_dash="dot", line_color="gray", line_width=1,
-            annotation_text="sill",
+            annotation_text=f"√sill = {np.sqrt(nugget + sill):.0f} px",
+            annotation_position="right",
+            annotation_font=dict(size=9, color="gray"),
+        )
+        fig.add_hline(
+            y=np.sqrt(nugget),
+            line_dash="dot", line_color="rgba(150,150,150,0.5)", line_width=1,
+            annotation_text=f"√nugget = {np.sqrt(nugget):.0f} px",
             annotation_position="right",
             annotation_font=dict(size=9, color="gray"),
         )
 
-    # Orange vertical: current tile footprint
     fig.add_vline(
         x=tile_size_m,
         line_dash="dashdot", line_color="#f0983a", line_width=2,
@@ -349,7 +383,6 @@ def _variogram_fig(result: dict) -> go.Figure:
         annotation_font=dict(size=10, color="#f0983a"),
     )
 
-    # Shaded gap between tile and range
     if range_ is not None and range_ > tile_size_m:
         fig.add_vrect(
             x0=tile_size_m, x1=range_,
@@ -364,10 +397,10 @@ def _variogram_fig(result: dict) -> go.Figure:
         title="Empirical variogram — spatial autocorrelation of erosion",
         title_font_size=13,
         xaxis_title="Distance between tile centres (m)",
-        yaxis_title="Semi-variance γ(h)  [px²]",
+        yaxis_title="√γ(h)  [px]  —  semi-deviation of erosion count",
         height=400, width=620,
         legend=dict(orientation="h", y=1.11, font_size=10),
-        margin=dict(l=65, r=25, t=60, b=50),
+        margin=dict(l=75, r=25, t=60, b=50),
     )
     return fig
 
@@ -468,37 +501,12 @@ def render(metrics_file: Path, model_stem: str) -> None:
         "F1 = harmonic mean of the above two."
     )
 
-    # ── 2 × 2 grid — centred, tight vertical spacing ──────────────────────────
-    st.markdown(
-        "<style>"
-        "div[data-testid='stPlotlyChart'] { margin-bottom: -2rem; }"
-        "</style>",
-        unsafe_allow_html=True,
+    # ── Unified 2×2 subplot — single Plotly figure ────────────────────────────
+    st.plotly_chart(
+        _combined_fig(curves, model_stem, n_tiles, overall_prec, overall_recall, overall_f1),
+        use_container_width=True,
     )
-    _, centre, _ = st.columns([1, 8, 1])
-    with centre:
-        top_l, top_r = st.columns(2)
-        bot_l, bot_r = st.columns(2)
 
-        with top_l:
-            st.plotly_chart(_lorenz_fig(curves, model_stem, n_tiles), use_container_width=False)
-        with top_r:
-            st.plotly_chart(
-                _metric_fig(curves, "precision", "Precision (erosion)", "#f0983a", overall_prec),
-                use_container_width=False,
-            )
-        with bot_l:
-            st.plotly_chart(
-                _metric_fig(curves, "recall", "Recall (erosion)", "#3acf7a", overall_recall),
-                use_container_width=False,
-            )
-        with bot_r:
-            st.plotly_chart(
-                _metric_fig(curves, "f1", "F1 score (erosion)", "#c85ab4", overall_f1),
-                use_container_width=False,
-            )
-
-    st.divider()
     st.info(
         "**Key insight:**  \n"
         "- **Precision** rises quickly — even among tiles with few erosion pixels, what "
@@ -561,6 +569,34 @@ def render(metrics_file: Path, model_stem: str) -> None:
         st.plotly_chart(_variogram_fig(result), use_container_width=False)
     with col_sites:
         st.plotly_chart(_sites_fig(result), use_container_width=False)
+
+    # ── Variogram interpretation ──────────────────────────────────────────────
+    if range_ is not None:
+        sqrt_nugget = float(np.sqrt(result["nugget"]))
+        sqrt_total  = float(np.sqrt(result["nugget"] + result["sill"]))
+        sqrt_sill   = float(np.sqrt(result["sill"]))
+        noise_pct   = result["nugget"] / (result["nugget"] + result["sill"]) * 100
+        struct_pct  = 100 - noise_pct
+
+        st.markdown(
+            f"**Reading the variogram** · y-axis = √γ(h), the **standard deviation of the "
+            f"difference** in erosion pixel count between two tiles at distance h.  \n"
+            f"- At h → 0: √γ ≈ **{sqrt_nugget:.0f} px** (nugget — irreducible local noise: "
+            f"two adjacent tiles still differ by ~{sqrt_nugget:.0f} px on average, "
+            f"regardless of how close they are).  \n"
+            f"- The curve rises because tiles become more dissimilar as distance increases, "
+            f"then flattens at **√γ = {sqrt_total:.0f} px** (total semi-deviation) once "
+            f"tiles are fully independent.  \n"
+            f"- That plateau is reached at **range = {range_:.1f} m**: beyond this distance "
+            f"knowing one tile's erosion count tells you nothing about its neighbour's.  \n"
+            f"- **{struct_pct:.0f}% of variance is spatially structured** (sill / total = "
+            f"{sqrt_sill:.0f} / {sqrt_total:.0f} px): erosion is not random — patches have "
+            f"a real spatial signature up to {range_:.1f} m.  \n"
+            f"- The orange line marks the current tile footprint ({tile_size_m:.1f} m) — "
+            f"it sits well inside the range. Most erosion-containing tiles therefore capture "
+            f"only a fragment of a {range_:.1f} m patch, which directly explains why recall "
+            f"collapses on boundary tiles."
+        )
 
     # ── Tile size derivation ──────────────────────────────────────────────────
     if range_ is not None:
