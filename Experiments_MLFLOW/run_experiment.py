@@ -46,6 +46,12 @@ def parse_args():
                    help="Run test evaluation every N epochs (default: 10)")
     p.add_argument("--run-name", default=None,
                    help="MLflow run name (default: arch_encoder_timestamp)")
+    p.add_argument("--amp", action="store_true", default=False,
+                   help="Enable Automatic Mixed Precision (float16 on CUDA)")
+    p.add_argument("--compile-mode", type=str, default=None,
+                   choices=["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"],
+                   help="Enable torch.compile with the given mode (requires PyTorch >= 2.0). "
+                        "Use max-autotune-no-cudagraphs when training with gradient accumulation.")
     return p.parse_args()
 
 
@@ -139,6 +145,8 @@ def main():
         accumulation_steps=args.accumulation_steps,
         checkpoint_every=args.checkpoint_every,
         eval_every=args.eval_every,
+        use_amp=args.amp,
+        compile_mode=args.compile_mode,
     )
     trainer.train(num_epochs=args.epochs)
 

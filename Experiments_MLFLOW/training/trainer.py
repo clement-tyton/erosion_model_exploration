@@ -96,6 +96,8 @@ class Trainer:
         accumulation_steps: int = 4,
         checkpoint_every: int = 10,
         eval_every: int = 10,
+        use_amp: bool = False,
+        compile_mode: str | None = None,
     ):
         self.model         = model.to(device)
         self.train_loader  = train_loader
@@ -149,6 +151,23 @@ class Trainer:
         # ── Output dirs ───────────────────────────────────────────────────────
         self._ckpt_dir    = Path(config.CHECKPOINTS_DIR) / run_name
         self._results_dir = Path(config.EXPERIMENTS_DIR) / "results" / run_name
+
+        # ── AMP & torch.compile ───────────────────────────────────────────────
+        self.use_amp      = use_amp
+        self.compile_mode = compile_mode
+        self._device_type = "cuda" if "cuda" in str(device) else "cpu"
+
+        # GradScaler: enabled only for CUDA AMP; behaves as no-op otherwise
+        self.scaler = torch.amp.GradScaler(
+            "cuda", enabled=(use_amp and self._device_type == "cuda")
+        )
+
+        # torch.compile: wraps the forward pass; state_dict/train/eval still work.
+        # CUDAGraphs disabled: incompatible with gradient accumulation (buffer overwrite).
+        # Triton autotuning (the real gain source) is preserved.
+        if compile_mode is not None:
+            print(f"[Trainer] torch.compile mode='{compile_mode}' …")
+            self.model = torch.compile(self.model, mode=compile_mode)
 
     # ── Scheduler factory ──────────────────────────────────────────────────────
 
@@ -233,6 +252,8 @@ class Trainer:
                 "data/num_test_tiles":     len(self.test_loader.dataset),
                 # run
                 "run/device":              self.device,
+                "run/use_amp":             self.use_amp,
+                "run/compile_mode":        self.compile_mode or "none",
             })
 
             # ── Model stats as metrics at step 0 ─────────────────────────────
@@ -350,31 +371,36 @@ class Trainer:
             images = images.to(self.device)
             masks  = masks.to(self.device)
 
-            logits = self.model(images)
-            loss   = self.criterion(logits, masks) / self.accumulation_steps
-            loss.backward()
+            with torch.autocast(device_type=self._device_type, enabled=self.use_amp):
+                logits = self.model(images)
+                loss   = self.criterion(logits, masks) / self.accumulation_steps
+            self.scaler.scale(loss).backward()
 
             total_loss += loss.item() * self.accumulation_steps
             n_steps    += 1
             self._train_meter.update(logits.detach(), masks)
 
             if (step + 1) % self.accumulation_steps == 0:
+                self.scaler.unscale_(self.optimizer)
                 norm = torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(),
                     self.grad_clip_norm if self.grad_clip_norm is not None else float("inf"),
                 )
                 grad_norms.append(norm.item())
-                self.optimizer.step()
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
                 self.optimizer.zero_grad()
 
         # Flush remaining gradients
         if n_steps % self.accumulation_steps != 0:
+            self.scaler.unscale_(self.optimizer)
             norm = torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(),
                 self.grad_clip_norm if self.grad_clip_norm is not None else float("inf"),
             )
             grad_norms.append(norm.item())
-            self.optimizer.step()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
             self.optimizer.zero_grad()
 
         grad_stats = {
@@ -400,8 +426,9 @@ class Trainer:
             images = images.to(self.device)
             masks  = masks.to(self.device)
 
-            logits = self.model(images)
-            loss   = self.criterion(logits, masks)
+            with torch.autocast(device_type=self._device_type, enabled=self.use_amp):
+                logits = self.model(images)
+                loss   = self.criterion(logits, masks)
             total_loss += loss.item()
             n_steps    += 1
 
