@@ -411,6 +411,8 @@ def main() -> None:
                         help="Skip geo index building step")
     parser.add_argument("--skip-eval",     action="store_true",
                         help="Skip model evaluation step")
+    parser.add_argument("--batch-size",    type=int, default=4,
+                        help="Inference batch size (default: 4)")
     args = parser.parse_args()
 
     # ── Step 1: download ──────────────────────────────────────────────────────
@@ -447,7 +449,7 @@ def main() -> None:
     print(f"\n══ Step 3 / 3 — Evaluate {len(registry)} model(s) on test set ══")
     for entry in registry:
         model_path = MODELS_DIR / entry["model_file"]
-        evaluate_model_on_test(model_path, force=args.force)
+        evaluate_model_on_test(model_path, force=args.force, batch_size=args.batch_size)
 
     print("\n[done] All steps complete.")
     print(f"  Test geo  : {TEST_GEO_PARQUET}")

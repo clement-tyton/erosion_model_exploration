@@ -43,6 +43,7 @@ from services.registry import (
     _TEST_DATA_DIR,
     _metrics_path,
     _model_data_dir,
+    _model_color,
     _model_sort_key,
     _registry_entry,
     _test_geo_path,
@@ -84,6 +85,18 @@ with _s_col:
 selected_model_path = MODELS_DIR / selected_model_name
 model_stem          = selected_model_path.stem
 metrics_file        = _metrics_path(model_stem)
+
+# ── Model colour badge ────────────────────────────────────────────────────────
+_entry = _registry_entry(selected_model_name)
+_color = _model_color(selected_model_name)
+_version_label = _entry.get("version", "unknown")
+_description   = _entry.get("description", selected_model_name)
+st.markdown(
+    f'<span style="background:{_color};color:#fff;padding:3px 10px;border-radius:12px;'
+    f'font-size:0.82em;font-weight:600">{_version_label}</span>'
+    f'&nbsp;<span style="color:#aaa;font-size:0.85em">{_description}</span>',
+    unsafe_allow_html=True,
+)
 
 if metrics_file is None:
     st.warning(

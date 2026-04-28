@@ -105,10 +105,13 @@ def render(
                 test_rec  = float(tagg["t_rec"])
                 test_iou  = float(tagg["t_iou"])
 
+            _is_mlflow  = str(entry.get("version", "")).startswith("mlflow")
+            _is_tytonai = str(entry.get("version", "")).startswith("tytonai")
             rows.append({
                 "model":              entry["model_file"],
                 "label":              stem,
                 "version":            entry["version"],
+                "🔬":                 "TytonAI" if _is_tytonai else ("MLflow" if _is_mlflow else "Prod"),
                 "epoch":              entry["epoch"],
                 "description":        entry["description"],
                 "dataset":            entry.get("dataset_name", entry["tiles_json_id"][:8]),
@@ -230,7 +233,7 @@ def render(
     _lb_col  = _train_col_map[_lb_sort]
 
     _lb_display_cols = [
-        "label", "dataset", "epoch",
+        "🔬", "label", "dataset", "epoch",
         "n_tiles", "n_erosion_tiles", "erosion_prevalence",
         "global_f1_erosion", "mean_f1_erosion",
         "mean_precision", "mean_recall",
@@ -335,10 +338,23 @@ def render(
     _train_num_display = [_col_labels.get(c, c) for c in _train_num_cols]
     _test_num_display  = [_col_labels.get(c, c) for c in _test_num_cols]
 
+    def _hi_mlflow_row(s: pd.Series) -> list[str]:
+        """Amber tint for MLflow rows, teal tint for TytonAI rows."""
+        out = []
+        for v in _lb_df_display["🔬"]:
+            if v == "MLflow":
+                out.append("background-color:#2a1800;border-left:3px solid #E67E22")
+            elif v == "TytonAI":
+                out.append("background-color:#0a2a25;border-left:3px solid #1ABC9C")
+            else:
+                out.append("")
+        return out
+
     styled_lb = (
         _lb_df_display.style
         .apply(_hi_max,        subset=_train_num_display)
         .apply(_hi_purple_max, subset=_test_num_display)
+        .apply(_hi_mlflow_row, subset=["🔬"])
         .format(
             {c: "{:.4f}" for c in _train_num_display + _test_num_display}
             | {"erosion_prevalence": "{:.2f}%"},
@@ -346,7 +362,7 @@ def render(
         )
     )
     st.dataframe(styled_lb, hide_index=True, width="stretch")
-    st.caption("Green = best eligible train metric · Purple = best eligible test metric · Grey = excluded (trained on test data)")
+    st.caption("Green = best train · Purple = best test · Grey = excluded · 🔬 MLflow = amber · 🔬 TytonAI = teal")
 
     _bar_has_test = compare_df["test_global_f1"].notna().any()
     _bar_view_opts = ["Train", "Both"] if _bar_has_test else ["Train"]
@@ -816,13 +832,15 @@ def render(
         ]
 
         def _comparison_fig(metric: str, title: str) -> go.Figure:
+            from services.registry import _model_color as _mc
             fig = go.Figure()
             for i, mf in enumerate(_curve_models):
                 cv = _lorenz_curves_for(mf, _curve_src)
                 if cv is None:
                     continue
                 stem = Path(mf).stem
-                color = _COLORS[i % len(_COLORS)]
+                _reg_color = _mc(Path(mf).name)
+                color = _reg_color if _reg_color != "#95A5A6" else _COLORS[i % len(_COLORS)]
                 is_excl = Path(mf).stem.replace("model_", "").split("_")[0] in _EXCLUDED
                 opacity = 0.35 if is_excl else 0.9
                 dash    = "dot" if is_excl else "solid"

@@ -1,102 +1,143 @@
 [
   {
-    "model_file":   "model_v1_jaswinder_epoch50.pth",
-    "version":      "v1",
-    "epoch":        50,
-    "description":  "Jaswinder baseline — epoch 50",
+    "model_file": "model_v1_jaswinder_epoch50.pth",
+    "version": "v1",
+    "epoch": 50,
+    "description": "Jaswinder baseline \u2014 epoch 50",
     "dataset_name": "v1_jaswinder",
     "tiles_json_id": "da2dabe0-eb9a-4238-8b8d-d1851df7b968",
-    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/2424a7bc-28e6-4e94-a558-075e8c25264f/model_epoch_50.pth"
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/2424a7bc-28e6-4e94-a558-075e8c25264f/model_epoch_50.pth"
   },
   {
-    "model_file":   "model_v2_no_erosion_td_epoch50.pth",
-    "version":      "v2",
-    "epoch":        50,
-    "description":  "v1 + no-erosion training data — epoch 50",
+    "model_file": "model_v2_no_erosion_td_epoch50.pth",
+    "version": "v2",
+    "epoch": 50,
+    "description": "v1 + no-erosion training data \u2014 epoch 50",
     "dataset_name": "v2_no_erosion_td",
     "tiles_json_id": "f8d5276b-0616-4f25-a580-801878ac0dc4",
-    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/9f39f3c2-ce50-4c6b-a3ae-c355e29f77c8/model_epoch_50.pth"
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/9f39f3c2-ce50-4c6b-a3ae-c355e29f77c8/model_epoch_50.pth"
   },
   {
-    "model_file":   "model_v3_split_test_epoch50.pth",
-    "version":      "v3",
-    "epoch":        50,
-    "description":  "v2 + no-erosion TD + split test — epoch 50",
+    "model_file": "model_v3_split_test_epoch50.pth",
+    "version": "v3",
+    "epoch": 50,
+    "description": "v2 + no-erosion TD + split test \u2014 epoch 50",
     "dataset_name": "v3_split_test_ep50",
     "tiles_json_id": "17620a1a-8cb2-439e-96ef-b6131e34dda3",
-    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/a1aacb5b-64b6-4069-939f-ca99f3879d89/model_epoch_50.pth"
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/a1aacb5b-64b6-4069-939f-ca99f3879d89/model_epoch_50.pth"
   },
   {
-    "model_file":   "model_v3_split_test_epoch78.pth",
-    "version":      "v3",
-    "epoch":        78,
-    "description":  "v2 + no-erosion TD + split test — epoch 78",
+    "model_file": "model_v3_split_test_epoch78.pth",
+    "version": "v3",
+    "epoch": 78,
+    "description": "v2 + no-erosion TD + split test \u2014 epoch 78",
     "dataset_name": "v3_split_test_final",
-    "tiles_json_id": "ef1410ef-59ab-4821-b044-11f8ef6a040a",
-    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/1360284e-3545-40ae-96f1-031b14629f3d/model_epoch_78.pth"
+    "tiles_json_id": "balanced_tiles",
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/1360284e-3545-40ae-96f1-031b14629f3d/model_epoch_78.pth"
   },
   {
-    "model_file":   "model_v3_split_test_epoch80.pth",
-    "version":      "v3",
-    "epoch":        80,
-    "description":  "v2 + no-erosion TD + split test — epoch 80",
+    "model_file": "model_v3_split_test_epoch80.pth",
+    "version": "v3",
+    "epoch": 80,
+    "description": "v2 + no-erosion TD + split test \u2014 epoch 80",
     "dataset_name": "v3_split_test_final",
-    "tiles_json_id": "ef1410ef-59ab-4821-b044-11f8ef6a040a",
-    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/1360284e-3545-40ae-96f1-031b14629f3d/model_epoch_80.pth"
+    "tiles_json_id": "balanced_tiles",
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/1360284e-3545-40ae-96f1-031b14629f3d/model_epoch_80.pth"
   },
   {
-    "model_file":   "model_finetuned_tytonai_epoch5.pth",
-    "version":      "v4_finetuned",
-    "epoch":        5,
-    "description":  "v3 finetuned on TytonAI data — epoch 5",
+    "model_file": "model_finetuned_tytonai_epoch5.pth",
+    "version": "v4_finetuned",
+    "epoch": 5,
+    "description": "v3 finetuned on TytonAI data \u2014 epoch 5",
     "dataset_name": "finetuned_tytonai_ep5",
     "tiles_json_id": "a50928f6-0f5d-413f-889d-3ffe2339c05d",
-    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/40ac9c6b-366f-4948-8850-bf345ffcb60c/model_epoch_5.pth"
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/40ac9c6b-366f-4948-8850-bf345ffcb60c/model_epoch_5.pth"
   },
   {
-    "model_file":   "model_v3_split_test_epoch400.pth",
-    "version":      "v3",
-    "epoch":        400,
-    "description":  "v3 from scratch — epoch 400",
+    "model_file": "model_v3_split_test_epoch400.pth",
+    "version": "v3",
+    "epoch": 400,
+    "description": "v3 from scratch \u2014 epoch 400",
     "dataset_name": "v3_split_test_final",
     "tiles_json_id": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
-    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_400.pth"
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_400.pth"
   },
   {
-    "model_file":   "model_v3_split_test_epoch399.pth",
-    "version":      "v3",
-    "epoch":        399,
-    "description":  "v3 from scratch — epoch 399",
+    "model_file": "model_v3_split_test_epoch399.pth",
+    "version": "v3",
+    "epoch": 399,
+    "description": "v3 from scratch \u2014 epoch 399",
     "dataset_name": "v3_split_test_final",
     "tiles_json_id": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
-    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_399.pth"
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_399.pth"
   },
   {
-    "model_file":   "model_v3_split_test_epoch_95.pth",
-    "version":      "v3",
-    "epoch":        95,
-    "description":  "v3 from scratch — epoch 95",
+    "model_file": "model_v3_split_test_epoch_95.pth",
+    "version": "v3",
+    "epoch": 95,
+    "description": "v3 from scratch \u2014 epoch 95",
     "dataset_name": "v3_split_test_final",
     "tiles_json_id": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
-    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_95.pth"
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_95.pth"
   },
   {
-    "model_file":   "model_v3_split_test_epoch_243.pth",
-    "version":      "v3",
-    "epoch":        243,
-    "description":  "v3 from scratch — epoch 243",
+    "model_file": "model_v3_split_test_epoch_243.pth",
+    "version": "v3",
+    "epoch": 243,
+    "description": "v3 from scratch \u2014 epoch 243",
     "dataset_name": "v3_split_test_final",
     "tiles_json_id": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
-    "s3_model":     "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_243.pth"
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/cf0211ac-30d4-46f8-a7cf-986b83f19a0b/model_epoch_243.pth"
   },
   {
-    "model_file":   "model_v3_split_test_epoch_1819.pth",
-    "version":      "v3",
-    "epoch":        1819,
-    "description":  "v3 from scratch — epoch 1819",
+    "model_file": "model_v3_split_test_epoch_1819.pth",
+    "version": "v3",
+    "epoch": 1819,
+    "description": "v3 from scratch \u2014 epoch 1819",
     "dataset_name": "v3_split_test_final",
     "tiles_json_id": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
-    "s3_model":    "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/8b454895-a581-4d0f-9ac6-7b37af1e4245/model_epoch_1819.pth"
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/8b454895-a581-4d0f-9ac6-7b37af1e4245/model_epoch_1819.pth"
+  },
+  {
+    "model_file": "model_v3_split_test_epoch_1998.pth",
+    "version": "v3",
+    "epoch": 1998,
+    "description": "v3 from scratch \u2014 epoch 1998",
+    "dataset_name": "v3_split_test_final",
+    "tiles_json_id": "29e4b03a-de0a-44c7-a859-772de7af2d6a.json",
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/2534c9eb-c2ae-41ba-a2e4-615a74a81e8b/model_epoch_1998.pth"
+  },
+  {
+    "model_file": "mlflow_segf_epoch200.pth",
+    "version": "mlflow_segf",
+    "epoch": 200,
+    "description": "MLflow SegFormer (res2net encoder) \u2014 epoch 200",
+    "dataset_name": "mlflow_balanced_tiles",
+    "tiles_json_id": "balanced_tiles"
+  },
+  {
+    "model_file": "mlflow_unet_baseline_epoch200.pth",
+    "version": "mlflow_unet",
+    "epoch": 200,
+    "description": "MLflow UNet baseline (res2net encoder) \u2014 epoch 200",
+    "dataset_name": "mlflow_balanced_tiles",
+    "tiles_json_id": "balanced_tiles"
+  },
+  {
+    "model_file": "mlflow_segformer_mit_b3_stable_epoch200.pth",
+    "version": "mlflow_segformer_mit_b3",
+    "epoch": 200,
+    "description": "MLflow SegFormer MiT-B3 \u2014 epoch 200",
+    "dataset_name": "mlflow_balanced_tiles",
+    "tiles_json_id": "balanced_tiles"
+  },
+  {
+    "model_file": "model_tytonai_prod_epoch20.pth",
+    "version": "tytonai_prod",
+    "epoch": 20,
+    "description": "TytonAI production model \u2014 epoch 20",
+    "dataset_name": "v3_split_test_final",
+    "tiles_json_id": "balanced_tiles",
+    "s3_model": "s3://9b38a3ce-6fd6-11ef-8285-472724185bb4/Projects/7bcc1758-16ab-11f0-84ad-8f3df9e6e2c1/model_epoch_20.pth"
   }
 ]
-  

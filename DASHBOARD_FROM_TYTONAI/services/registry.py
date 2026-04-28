@@ -83,26 +83,55 @@ def _test_geo_path() -> Path:
 
 
 # ── Tile JSON & data dir ──────────────────────────────────────────────────────
+_TILES_JSON_SEARCH_DIRS = [
+    ROOT,
+    _TILES_JSON_DIR,
+    ROOT / "Experiments_MLFLOW" / "metadata",
+]
+
+
 def _model_tiles_json(model_name: str) -> Path:
     entry = _registry_entry(model_name)
-    if entry and "dataset_name" in entry:
-        p = _TILES_JSON_DIR / f"{entry['dataset_name']}.json"
-        if p.exists():
-            return p
-        p = ROOT / f"{entry['dataset_name']}.json"
-        if p.exists():
-            return p
-    if entry and "tiles_json_id" in entry:
-        p = ROOT / f"{entry['tiles_json_id']}.json"
-        if p.exists():
-            return p
+    for key in ("dataset_name", "tiles_json_id"):
+        if not (entry and key in entry):
+            continue
+        for search_dir in _TILES_JSON_SEARCH_DIRS:
+            p = search_dir / f"{entry[key]}.json"
+            if p.exists():
+                return p
     from src.config import TILES_JSON
     return TILES_JSON
+
+
+def _model_color(model_name: str) -> str:
+    """Return a hex color for a model based on its version group."""
+    entry = _registry_entry(model_name)
+    version = entry.get("version", "")
+    if version.startswith("tytonai"):
+        return "#1ABC9C"       # teal   — TytonAI production
+    if version.startswith("mlflow"):
+        if "mit_b3" in version:
+            return "#F39C12"   # amber  — SegFormer MiT-B3
+        if "segf" in version:
+            return "#E67E22"   # orange — SegFormer res2net
+        return "#D35400"       # dark orange — UNet baseline / other mlflow
+    if version.startswith("v4"):
+        return "#9B59B6"       # purple — finetuned
+    if version.startswith("v3"):
+        return "#2ECC71"       # green  — v3
+    if version.startswith("v2"):
+        return "#3498DB"       # blue   — v2
+    return "#95A5A6"           # grey   — v1 / unknown
+
+
+_MLFLOW_TRAIN_DATA_DIR = ROOT / "Experiments_MLFLOW" / "data" / "train_data"
 
 
 def _model_data_dir(model_name: str) -> Path:
     entry = _registry_entry(model_name)
     if entry and "dataset_name" in entry:
+        if entry["dataset_name"] == "mlflow_balanced_tiles":
+            return _MLFLOW_TRAIN_DATA_DIR
         p = ROOT / "data" / entry["dataset_name"]
         if p.exists():
             return p

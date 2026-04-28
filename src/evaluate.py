@@ -132,6 +132,7 @@ def run_evaluation(
     model_path: Path = MODEL_PATH,
     tiles_json_path: Path | None = None,
     data_dir: Path | None = None,
+    batch_size: int = BATCH_SIZE,
 ) -> pd.DataFrame:
     """
     Run inference on all tiles and save per-tile metrics to a parquet file.
@@ -175,7 +176,7 @@ def run_evaluation(
     dataset = TileDataset(tiles, data_dir=_data_dir)
     loader = DataLoader(
         dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=False,
         num_workers=NUM_WORKERS,
         pin_memory=torch.cuda.is_available(),
@@ -270,12 +271,15 @@ def main():
                         help="Path to tiles JSON file (default: TILES_JSON from config)")
     parser.add_argument("--data-dir", type=str, default=None,
                         help="Directory containing NPZ tiles (default: DATA_DIR from config)")
+    parser.add_argument("--batch-size", type=int, default=None,
+                        help=f"Inference batch size (default: {BATCH_SIZE} from config)")
     args = parser.parse_args()
     model_path  = Path(args.model_path)  if args.model_path  else MODEL_PATH
     tiles_json  = Path(args.tiles_json)  if args.tiles_json  else None
     data_dir    = Path(args.data_dir)    if args.data_dir    else None
+    batch_size  = args.batch_size        if args.batch_size  else BATCH_SIZE
     run_evaluation(force=args.force, model_path=model_path,
-                   tiles_json_path=tiles_json, data_dir=data_dir)
+                   tiles_json_path=tiles_json, data_dir=data_dir, batch_size=batch_size)
 
 
 if __name__ == "__main__":

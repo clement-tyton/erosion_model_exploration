@@ -105,6 +105,17 @@ def render(
                 ORDER BY {_exp_t_order}
             """)
 
+            _exp_t_search = st.text_input(
+                "Search tile name (substring)", value="",
+                placeholder="e.g. 81bdc548", key="exp_t_search",
+            )
+            if _exp_t_search:
+                _exp_t_filtered = _exp_t_filtered[
+                    _exp_t_filtered["imagery_file"].str.contains(
+                        _exp_t_search, case=False, na=False
+                    )
+                ]
+
             _exp_t_total = len(_exp_t_filtered)
             _exp_t_pg_size = 20
             _exp_t_pages   = max(1, (_exp_t_total - 1) // _exp_t_pg_size + 1)
